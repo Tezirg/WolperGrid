@@ -24,7 +24,7 @@ def to_norm_vect(inputv, pad_v = 0.0, scale_v = 1.0):
     vsafe = np.nan_to_num(v, nan=pad_v, posinf=pad_v, neginf=pad_v)
     return vsafe.astype(np.float32)
 
-def analog_convert_obs(obs, bias=0.0):
+def wg_convert_obs(obs, bias=0.0):
     # Store some shortcuts
     topo = obs.topo_vect
     g_pos = obs.gen_pos_topo_vect
@@ -219,7 +219,7 @@ def act_redispatch_to_netdisp(obs, act_redispatch):
 
     return netdisp
     
-def analog_convert_act(action_space, obs, netbus, netline, netdisp):
+def wg_convert_act(action_space, obs, netbus, netline, netdisp):
     act_setbus = netbus_to_act_setbus(obs, netbus)
     act_setstatus = netline_to_act_setstatus(obs, netline)
     act_redispatch = netdisp_to_act_redispatch(obs, netdisp)
