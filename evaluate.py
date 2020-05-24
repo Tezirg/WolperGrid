@@ -17,7 +17,7 @@ from grid2op.Runner import Runner
 from grid2op.Reward import *
 from grid2op.Action import *
 
-from AnalogStateRDQN import AnalogStateRDQN as RDQNAgent
+from WolperGrid import WolperGrid as WGAgent
 from l2rpn_baselines.utils.save_log_gif import save_log_gif
 
 DEFAULT_LOGS_DIR = "./logs-eval"
@@ -68,9 +68,9 @@ def evaluate(env,
 
     # Run
     # Create agent
-    agent = RDQNAgent(env.observation_space,
-                      env.action_space,
-                      is_training=False)
+    agent = WGAgent(env.observation_space,
+                    env.action_space,
+                    is_training=False)
 
     # Load weights from file
     agent.load(load_path)

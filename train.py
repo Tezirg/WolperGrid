@@ -16,13 +16,12 @@ from grid2op.Reward import *
 from grid2op.Action import *
 from grid2op.Parameters import Parameters
 
-from AnalogStateRDQN import AnalogStateRDQN as RDQNAgent
+from WolperGrid import WolperGrid as WGAgent
 
-DEFAULT_NAME = "GridRDQN"
+DEFAULT_NAME = "WolpGrid"
 DEFAULT_SAVE_DIR = "./models"
 DEFAULT_LOG_DIR = "./logs-train"
-DEFAULT_PRE_STEPS = 256
-DEFAULT_TRAIN_STEPS = 1024 * 1024 * 10
+DEFAULT_EPISODES = 10
 DEFAULT_TRACE_LEN = 12
 DEFAULT_BATCH_SIZE = 32
 DEFAULT_LR = 1e-4
@@ -46,15 +45,9 @@ def cli():
                         default=DEFAULT_LOG_DIR, type=str,
                         help="Directory to save the logs")
     # Params
-    parser.add_argument("--num_pre_steps", required=False,
-                        default=DEFAULT_PRE_STEPS, type=int,
-                        help="Number of random steps before training")
-    parser.add_argument("--num_train_steps", required=False,
-                        default=DEFAULT_TRAIN_STEPS, type=int,
+    parser.add_argument("--num_episode", required=False,
+                        default=DEFAULT_EPISODES, type=int,
                         help="Number of training iterations")
-    parser.add_argument("--trace_length", required=False,
-                        default=DEFAULT_TRACE_LEN, type=int,
-                        help="Number of stacked states to use during training")
     parser.add_argument("--batch_size", required=False,
                         default=DEFAULT_BATCH_SIZE, type=int,
                         help="Mini batch size (defaults to 1)")
@@ -67,12 +60,10 @@ def cli():
 
 def train(env,
           name=DEFAULT_NAME,
-          iterations=DEFAULT_TRAIN_STEPS,
+          iterations=DEFAULT_EPISODES,
           save_path=DEFAULT_SAVE_DIR,
           load_path=None,
           logs_path=DEFAULT_LOG_DIR,
-          num_pre_training_steps=DEFAULT_PRE_STEPS,
-          trace_length=DEFAULT_TRACE_LEN,
           batch_size=DEFAULT_BATCH_SIZE,
           learning_rate=DEFAULT_LR):
 
@@ -81,13 +72,13 @@ def train(env,
     if len(physical_devices) > 0:
         tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
-    agent = RDQNAgent(env.observation_space,
-                      env.action_space,
-                      name=name, 
-                      is_training=True,
-                      batch_size=batch_size,
-                      trace_length=trace_length,
-                      lr=learning_rate)
+    agent = WGAgent(env.observation_space,
+                    env.action_space,
+                    name=name, 
+                    is_training=True,
+                    batch_size=batch_size,
+                    trace_length=trace_length,
+                    lr=learning_rate)
 
     if load_path is not None:
         agent.load(load_path)
@@ -95,7 +86,6 @@ def train(env,
     agent.train(env,
                 iterations,
                 save_path,
-                num_pre_training_steps,
                 logs_path)
 
 if __name__ == "__main__":
@@ -129,11 +119,9 @@ if __name__ == "__main__":
 
     train(env,
           name = args.name,
-          iterations = args.num_train_steps,
-          num_pre_training_steps = args.num_pre_steps,
+          iterations = args.num_episodes,
           save_path = args.save_dir,
           load_path = args.load_file,
           logs_path = args.logs_dir,
-          trace_length = args.trace_length,
           batch_size = args.batch_size,
           learning_rate = args.learning_rate)
