@@ -1,11 +1,11 @@
 import numpy as np
 import math
 
-def size_obs(observation_space):
+def wg_size_obs(observation_space):
     dims = np.array([
         # Time
         5, # Timestamp
-        2 * observation_space.n_line,
+        3 * observation_space.n_line,
         observation_space.n_sub,
         # Gen
         observation_space.n_gen * 7,
@@ -37,17 +37,18 @@ def wg_convert_obs(obs, bias=0.0):
                obs.hour_of_day / 24.0, obs.minute_of_hour / 60.0]
     time_v = to_norm_vect(time_li)
     time_line_cd = to_norm_vect(obs.time_before_cooldown_line,
-                                pad_v=-1.0, scale_v=10.0)
-    time_line_nm = to_norm_vect(obs.time_next_maintenance, scale_v=10.0)
+                                pad_v=-1.0, scale_v=20.0)
+    time_line_nm = to_norm_vect(obs.time_next_maintenance, scale_v=12.0*31.0*24.0)
+    time_line_dm = to_norm_vect(obs.duration_next_maintenance, scale_v=3*12.0*24.0)
     time_sub_cd = to_norm_vect(obs.time_before_cooldown_sub,
-                               pad_v=-1.0, scale_v=10.0)
+                               pad_v=-1.0, scale_v=20.0)
     
     # Get generators info
     g_p = to_norm_vect(obs.prod_p, scale_v=1000.0)
     g_q = to_norm_vect(obs.prod_q, scale_v=1000.0)
     g_v = to_norm_vect(obs.prod_v, scale_v=1000.0)
-    g_tr = to_norm_vect(obs.target_dispatch, scale_v=150.0)
-    g_ar = to_norm_vect(obs.actual_dispatch, scale_v=150.0)
+    g_tr = to_norm_vect(obs.target_dispatch, scale_v=500.0)
+    g_ar = to_norm_vect(obs.actual_dispatch, scale_v=500.0)
     g_cost = to_norm_vect(obs.gen_cost_per_MW, pad_v=0.0, scale_v=1.0)
     g_buses = np.zeros(obs.n_gen)
     for gen_id in range(obs.n_gen):
@@ -93,7 +94,9 @@ def wg_convert_obs(obs, bias=0.0):
 
     res = np.concatenate([
         # Time
-        time_v, time_line_cd, time_sub_cd, time_line_nm,
+        time_v,
+        time_line_cd, time_line_nm, time_line_dm,
+        time_sub_cd,
         # Gens
         g_p, g_q, g_v, g_ar, g_tr, g_bus, g_cost,
         # Loads

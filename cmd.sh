@@ -17,9 +17,7 @@ rm -rf ./logs-train/$WG_NAME
 ./train.py\
     --name $WG_NAME \
     --data_dir $WG_DATA \
-    --num_pre_steps 256 \
-    --num_train_steps 131072 \
-    --num_frames 4
+    --num_episodes 1000
 
 rm -rf ./logs-eval/$WG_NAME
 ./evaluate.py \

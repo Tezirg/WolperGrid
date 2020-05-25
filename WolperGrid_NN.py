@@ -16,7 +16,7 @@ import tensorflow.keras.optimizers as tfko
 import tensorflow.keras.layers as tfkl
 import tensorflow.keras.activations as tfka
 
-from grid2op.Converter import AnalogStateConverter as analog
+from wg_util import *
 
 class WolperGrid_NN(object):
     def __init__(self,
@@ -42,7 +42,8 @@ class WolperGrid_NN(object):
 
         self.actor = None
         self.critic = None
-        self.construct_actor_network()
+        self.construct_wg_actor()
+        self.construct_wg_critic()
 
     def forward_encode(self, inputobs, name):
         # Bayesian NN simulate using dropout
@@ -51,7 +52,7 @@ class WolperGrid_NN(object):
         # Three layers encoder
         lay1 = tfkl.Dense(self.encoded_size + 64, name=name+"_fc1")(layd)
         lay1 = tf.nn.leaky_relu(lay1, alpha=0.01, name=name+"_leak_fc1")
-        
+
         lay2 = tfkl.Dense(self.encoded_size + 32, name=name+"_fc2")(lay1)
         lay2 = tf.nn.leaky_relu(lay2, alpha=0.01, name=name+"_leak_fc2")
 
@@ -64,80 +65,83 @@ class WolperGrid_NN(object):
         return encoded
 
     def forward_vec(self, hidden, out_size, name):
-        # Always add some noise to spread outputs
-        #noisy = tfkl.GaussianDropout(0.2)(hidden, self.is_training)
-        
-        # Decode to partial state vec
-        vec_1 = tfkl.Dense(out_size * 2, name=name+"_fc1_vec")(hidden)
+        vec_1 = tfkl.Dense(out_size + 64, name=name+"_fc1_vec")(hidden)
         vec_1 = tf.nn.leaky_relu(vec_1, alpha=0.01,
                                  name=name+"_leak1_vec")
-        vec_2 = tfkl.Dense(out_size + out_size // 2,
+        vec_2 = tfkl.Dense(out_size + 32,
                            name=name+"_fc2_vec")(vec_1)
         vec_2 = tf.nn.leaky_relu(vec_2, alpha=0.01,
                                  name=name+"_leak2_vec")
         vec = tfkl.Dense(out_size, name=name+"_fc3_vec")(vec_2)
         return vec
-        
-    def forward_streams(self, hidden, out_size, name):
-        # Advantage stream
-        advantage = tfkl.Dense(out_size + 64, name=name+"_fcadv")(hidden)
-        advantage = tf.nn.leaky_relu(advantage, alpha=0.01,
-                                     name=name+"_leak_adv")
-        advantage = tfkl.Dense(out_size, name=name+"_adv")(advantage)
-        advantage_mean = tf.math.reduce_mean(advantage, axis=1,
-                                             keepdims=True,
-                                             name=name+"_adv_mean")
-        advantage = tfkl.subtract([advantage, advantage_mean],
-                                  name= name+"_adv_sub")
 
-        # Value stream
-        value = tfkl.Dense(out_size + 64, name=name+"_fcval")(hidden)
-        value = tf.nn.leaky_relu(value, alpha=0.01, name=name+"_leak_val")
-        value = tfkl.Dense(1, name=name+"_val")(value)
-
-        # Q values = val + adv
-        q = tf.math.add(value, advantage, name=name+"_out")
-        return q
-
-    def construct_actor_network(self):
+    def construct_wg_actor(self):
         # Defines input tensors and scalars
-        self.dropout_rate = tf.Variable(0.0, trainable=False,
-                                        dtype=tf.float32, name="drop_rate")
         input_shape = (self.observation_size,)
         input_layer = tfk.Input(dtype=tf.float32, shape=input_shape,
-                                name='input_obs')
+                                name='actor_obs')
 
         # Forward encode
-        hidden = self.forward_encode(input_layer, "obs")
-        
+        hidden = self.forward_encode(input_layer, "actor_encode")
+
         # Topology buses
-        t_vec = self.forward_vec(hidden, self.topo_size, "bus")
+        t_vec = self.forward_vec(hidden, self.topo_size, "actor_bus")
         # To action range [0;1;2]
-        t = tf.math.sigmoid(t_vec, name="bus_sig")
+        t = tf.math.sigmoid(t_vec, name="actor_bus_sig")
         t = tf.multiply(t, float(self.n_bus))
         print ("t shape=", t.shape)
 
         # Lines
-        l_vec = self.forward_vec(hidden, self.n_line, "line")
+        l_vec = self.forward_vec(hidden, self.n_line, "actor_line")
         # To action range [-1;0;1]
-        l = tf.nn.tanh(l_vec, name="line_tanh")
+        l = tf.nn.tanh(l_vec, name="actor_line_tanh")
         print("l shape =", l.shape)
 
         # Redispatch
-        d_vec = self.forward_vec(hidden, self.disp_size, "disp")
-        d = tf.nn.tanh(d_vec, name="disp_tanh")
+        d_vec = self.forward_vec(hidden, self.disp_size, "actor_disp")
+        # To action range [-1;1]
+        d = tf.nn.tanh(d_vec, name="actro_disp_tanh")
         print ("d shape=", d.shape)
 
         # Backwards pass
-        model_inputs = [ input_layer ]
-        model_outputs = [ t, l, d ]
-        self.actor = tfk.Model(inputs=model_inputs,
-                               outputs=model_outputs,
-                               name=self.__class__.__name__)
+        actor_inputs = [ input_layer ]
+        actor_outputs = [ t, l, d ]
+        self.actor = tfk.Model(inputs=actor_inputs,
+                               outputs=actor_outputs,
+                               name="actor_" + self.__class__.__name__)
         losses = [ self._clipped_mse_loss ]
-        
-        self.optimizer = tfko.Adam(lr=self.lr, clipnorm=1.0)
-        self.actor.compile(loss=losses, optimizer=self.optimizer)
+
+        self.act_opt = tfko.Adam(lr=self.lr, clipnorm=1.0)
+        self.actor.compile(loss=losses, optimizer=self.act_opt)
+
+    def construct_wg_critic(self):
+        input_obs_shape = (self.observation_size,)
+        input_obs = tfk.Input(dtype=tf.float32,
+                              shape=input_obs_shape,
+                              name='critic_obs')
+        input_proto_shape = (self.topo_size + self.n_line + self.disp_size,)
+        input_proto = tfk.Input(dtype=tf.float32,
+                                shape=input_proto_shape,
+                                name='critic_proto')
+
+        # Forward encode
+        encoded_obs = self.forward_encode(input_obs, "critic_obs")
+        encoded_act = self.forward_encode(input_proto, "critic_act")
+
+        hidden = tf.concat([encoded_obs, encoded_act], "critic_concat")
+
+        # Q values for K closest actions
+        kQ = self.forward_vec(hidden, self.k)
+
+        # Backwards pass
+        critic_inputs = [ input_layer ]
+        critic_outputs = [ kQ ]
+        self.critic = tfk.Model(inputs=critic_inputs,
+                                outputs=critic_outputs,
+                                name="critic_" + self.__class__.__name__)
+        # Keras model
+        self.critic_opt = tfko.Adam(lr=self.lr, clipnorm=1.0)
+        self.critic.compile(loss=losses, optimizer=self.critic_opt)        
 
     def _no_loss(self, y_true, y_pred):
         return 0.0
@@ -148,9 +152,7 @@ class WolperGrid_NN(object):
         clipped_loss = tf.clip_by_value(loss, 0.0, 1e2, name="loss_clip")
         return clipped_loss
 
-    def bayesian_move(self, data, mem, carry, rate = 0.0):
-        self.dropout_rate.assign(float(rate))
-
+    def predict_move(self, data, mem, carry):
         input_shape = (1, self.observation_size)
         data_input = data.reshape(input_shape)
         model_input = [data_input]
@@ -171,9 +173,6 @@ class WolperGrid_NN(object):
         line = line[grid]
         disp = disp[grid]
         return (grid, bus, line, disp, q), pred[4], pred[5]
-
-    def predict_move(self, data, mem, carry):
-        return self.bayesian_move(data, mem, carry, 0.0)
 
     def random_move(self, data, mem, carry, obs):
         self.trace_length.assign(1)
@@ -207,20 +206,22 @@ class WolperGrid_NN(object):
 
         return (rnd_grid, rnd_bus, rnd_line, rnd_disp), pred[4], pred[5]
 
-    def update_target_hard(self, target_model):
-        this_weights = self.model.get_weights()
-        target_model.set_weights(this_weights)
+    @staticmethod
+    def update_target_hard(source_model, target_model):
+        src_weights = source_model.get_weights()
+        target_model.set_weights(src_weights)
 
-    def update_target_soft(self, target_model, tau=1e-2):
+    @staticmethod
+    def update_target_soft(source_model, target_model, tau=1e-3):
         tau_inv = 1.0 - tau
         # Get parameters to update
         target_params = target_model.trainable_variables
-        main_params = self.model.trainable_variables
+        source_params = source_model.trainable_variables
 
         # Update each param
         for i, var in enumerate(target_params):
+            var_update = source_params[i].value() * tau
             var_persist = var.value() * tau_inv
-            var_update = main_params[i].value() * tau
             # Poliak averaging
             var.assign(var_update + var_persist)
 
@@ -234,4 +235,3 @@ class WolperGrid_NN(object):
         # nothing has changed
         self.model.load_weights(path)
         print("Succesfully loaded network from: {}".format(path))
-
