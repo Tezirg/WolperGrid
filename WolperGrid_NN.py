@@ -186,15 +186,15 @@ class WolperGrid_NN(object):
         self.critic.compile(loss=losses, optimizer=self.critic_opt)        
 
     def _clipped_me_loss(self, y_true, y_pred):
-        loss = tf.math.reduce_mean(y_true - y_pred,
-                                   name="loss_me")
+        td_error = tf.math.abs(y_true - y_pred)
+        loss = tf.math.reduce_mean(td_error, name="loss_me")
         clipped_loss = tf.clip_by_value(loss, 0.0, 1e2, name="me_clip")
         return clipped_loss
 
     def _clipped_mse_loss(self, y_true, y_pred):
         loss = tf.math.reduce_mean(tf.math.square(y_true - y_pred),
                                    name="loss_mse")
-        clipped_loss = tf.clip_by_value(loss, 0.0, 1e2, name="mse_clip")
+        clipped_loss = tf.clip_by_value(loss, 0.0, 1e3, name="mse_clip")
         return clipped_loss
 
     def predict_move(self, data):
