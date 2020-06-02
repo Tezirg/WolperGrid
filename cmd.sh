@@ -17,7 +17,7 @@ rm -rf ./logs-train/$WG_NAME
 ./train.py\
     --name $WG_NAME \
     --data_dir $WG_DATA \
-    --num_episodes 1000
+    --num_episode 1000
 
 rm -rf ./logs-eval/$WG_NAME
 ./evaluate.py \
