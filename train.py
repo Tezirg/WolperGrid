@@ -16,7 +16,7 @@ DEFAULT_LOG_DIR = "./logs-train"
 DEFAULT_EPISODES = 10
 DEFAULT_TRACE_LEN = 12
 DEFAULT_BATCH_SIZE = 32
-DEFAULT_LR = 1e-4
+DEFAULT_LR = 2e-5
 
 
 def cli():
@@ -100,11 +100,11 @@ if __name__ == "__main__":
     cr = env.reward_helper.template_reward
     #cr.addReward("bridge", BridgeReward(), 1.0)
     #cr.addReward("distance", DistanceReward(), 5.0)
-    cr.addReward("overflow", CloseToOverflowReward(), 1.0)
+    #cr.addReward("overflow", CloseToOverflowReward(), 1.0)
     cr.addReward("game", GameplayReward(), 2.0)
     #cr.addReward("eco", EconomicReward(), 2.0)
     cr.addReward("reco", LinesReconnectedReward(), 1.0)
-    cr.set_range(0.0, 10.0)
+    cr.set_range(-1.0, 1.0)
     # Initialize custom rewards
     cr.initialize(env)
 

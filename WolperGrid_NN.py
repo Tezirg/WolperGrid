@@ -68,10 +68,10 @@ class WolperGrid_NN(object):
 
     def forward_encode(self, layin, name):
         # Three layers encoder
-        lay1 = tfkl.Dense(self.encoded_size + 128, name=name+"_fc1")(layin)
+        lay1 = tfkl.Dense(self.encoded_size + 256, name=name+"_fc1")(layin)
         lay1 = tf.nn.leaky_relu(lay1, alpha=0.01, name=name+"_leak_fc1")
 
-        lay2 = tfkl.Dense(self.encoded_size + 64, name=name+"_fc2")(lay1)
+        lay2 = tfkl.Dense(self.encoded_size + 128, name=name+"_fc2")(lay1)
         lay2 = tf.nn.leaky_relu(lay2, alpha=0.01, name=name+"_leak_fc2")
 
         lay3 = tfkl.Dense(self.encoded_size, name=name+"_fc3")(lay2)
@@ -80,10 +80,10 @@ class WolperGrid_NN(object):
         return lay3
 
     def forward_vec(self, hidden, out_size, name):
-        vec_1 = tfkl.Dense(out_size + 64, name=name+"_fc1_vec")(hidden)
+        vec_1 = tfkl.Dense(out_size + 128, name=name+"_fc1_vec")(hidden)
         vec_1 = tf.nn.leaky_relu(vec_1, alpha=0.01,
                                  name=name+"_leak1_vec")
-        vec_2 = tfkl.Dense(out_size + 32,
+        vec_2 = tfkl.Dense(out_size + 64,
                            name=name+"_fc2_vec")(vec_1)
         vec_2 = tf.nn.leaky_relu(vec_2, alpha=0.01,
                                  name=name+"_leak2_vec")
@@ -167,11 +167,35 @@ class WolperGrid_NN(object):
         encoded_obs = self.forward_encode(input_obs, "critic_obs")
         encoded_act = self.forward_encode(input_proto, "critic_act")
 
-        hidden = tf.concat([encoded_obs, encoded_act], axis=1,
+        hidden = tf.concat([encoded_obs, encoded_act], axis=-1,
                            name="critic_concat")
 
+        # Forward adv/val streams
+        ## Adv
+        advantage = tfkl.Dense(self.k // 4,
+                               name="critic_fc_adv1")(hidden)
+        advantage = tf.nn.relu(advantage, name="critic_adv_relu1")
+        advantage = tfkl.Dense(self.k // 2,
+                               name="critic_fc_adv2")(advantage)
+        advantage = tf.nn.relu(advantage, name="critic_adv_relu2")
+        advantage = tfkl.Dense(self.k, name="critic_adv")(advantage)
+
+        advantage_mean = tf.math.reduce_mean(advantage, axis=-1,
+                                             keepdims=True,
+                                             name="critic_adv_mean")
+        advantage = tfkl.subtract([advantage, advantage_mean],
+                                  name="critic_adv_subtract")
+        ## Val
+        value = tfkl.Dense(self.k // 4,
+                           name="critic_fc_val1")(hidden)
+        value = tf.nn.relu(value, name="critic_val_relu1")
+        value = tfkl.Dense(self.k // 2,
+                           name="critic_fc_val2")(value)
+        value = tf.nn.relu(value, name="critic_val_relu2")
+        value = tfkl.Dense(1, name="critic_val")(value)
+
         # Q values for K closest actions
-        kQ = self.forward_vec(hidden, self.k, "critic")
+        kQ = tf.math.add(value, advantage, name="critic_kQ")
 
         # Backwards pass
         critic_inputs = [ input_obs, input_proto ]

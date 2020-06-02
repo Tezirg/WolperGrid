@@ -332,7 +332,7 @@ class WolperGrid(AgentWithConverter):
 
         # T+1 batch predict
         t1_proto = self.Qtarget.actor.predict(t1_input,
-                                            batch_size=self.batch_size)
+                                              batch_size=self.batch_size)
         t1_input_critic = [t_data, t_proto]
         t1_kQ = self.Qtarget.critic.predict(t1_input_critic,
                                             batch_size=self.batch_size)
