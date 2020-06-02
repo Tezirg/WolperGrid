@@ -69,7 +69,6 @@ def train(env,
                     name=name, 
                     is_training=True,
                     batch_size=batch_size,
-                    trace_length=trace_length,
                     lr=learning_rate)
 
     if load_path is not None:
@@ -111,7 +110,7 @@ if __name__ == "__main__":
 
     train(env,
           name = args.name,
-          iterations = args.num_episodes,
+          iterations = args.num_episode,
           save_path = args.save_dir,
           load_path = args.load_file,
           logs_path = args.logs_dir,

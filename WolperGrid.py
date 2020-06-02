@@ -5,7 +5,7 @@ import numpy as np
 import tensorflow as tf
 
 from grid2op.Agent import AgentWithConverter
-from grid2op.Converter import AnalogStateConverter
+from grid2op.Converter import IdToAct
 
 from ReplayBuffer import ReplayBuffer
 from WolperGrid_NN import WolperGrid_NN
@@ -18,12 +18,12 @@ STEP_EPSILON = (INITIAL_EPSILON-FINAL_EPSILON)/DECAY_EPSILON
 DISCOUNT_FACTOR = 0.99
 REPLAY_BUFFER_SIZE = 1024*4
 UPDATE_TARGET_HARD_FREQ = -1
-UPDATE_TARGET_SOFT_TAU = 0.001
+UPDATE_TARGET_SOFT_TAU = 1e-3
 INPUT_BIAS = 0.0
-SUFFLE_FREQ = 1000
 SAVE_FREQ = 100
+K_RATIO = 0.05
 
-class WolperGrid(BaseAgent):
+class WolperGrid(AgentWithConverter):
     def __init__(self,
                  observation_space,
                  action_space,
@@ -32,13 +32,14 @@ class WolperGrid(BaseAgent):
                  is_training=False,
                  lr=1e-5):
         # Call parent constructor
-        super().__init__(action_space)
+        super().__init__(action_space,
+                         action_space_converter=IdToAct)
 
         # Store constructor params
         self.observation_space = observation_space
         self.obs_space = observation_space
+        self.observation_size = wg_size_obs(self.obs_space)
         self.name = name
-        self.n_grid = n_grid
         self.batch_size = batch_size
         self.is_training = is_training
         self.lr = lr
@@ -48,15 +49,10 @@ class WolperGrid(BaseAgent):
         self.obs = None
         self.state = []
 
-        # Compute dimensions from intial state
-        self.observation_size = wg_size_obs(self.obs_space)
-        print("Observation_size = ", self.observation_size)
-
         # Load network graph
-        self.Qmain = WolperGrid_NN(self.observation_size,
-                                   self.observation_space.dim_topo,
-                                   self.observation_space.n_line,
-                                   self.observation_space.n_gen,
+        self.Qmain = WolperGrid_NN(self.observation_space,
+                                   self.action_space,
+                                   k_ratio = K_RATIO,
                                    learning_rate = self.lr,
                                    is_training = self.is_training)
         # Setup training vars if needed
@@ -65,8 +61,7 @@ class WolperGrid(BaseAgent):
 
 
     def _init_training(self):
-        self.exp_buffer = ReplayBuffer(REPLAY_BUFFER_SIZE,
-                                       self.batch_size)
+        self.exp_buffer = ReplayBuffer(REPLAY_BUFFER_SIZE)
         self.done = False
         self.steps = 0
         self.epoch_rewards = []
@@ -75,15 +70,17 @@ class WolperGrid(BaseAgent):
         self.epoch_ambiguous = []
         self.episode_exp = []
         self.epsilon = INITIAL_EPSILON
-        self.loss = -1.0
-        self.Qtarget = WolperGrid_NN(self.observation_size,
-                                     self.observation_space.dim_topo,
-                                     self.observation_space.n_line,
-                                     self.observation_space.n_gen,
+        self.loss = 42.0
+        self.Qtarget = WolperGrid_NN(self.observation_space,
+                                     self.action_space,
+                                     k_ratio = K_RATIO,
                                      learning_rate = self.lr,
-                                     is_training = self.is_training)
-        WolpGrid_NN.update_target_hard(self.Qmain.actor, self.Qtarget.actor)
-        WolpGrid_NN.update_target_hard(self.Qmain.critic, self.Qtarget.critic)
+                                     is_training = self.is_training,
+                                     is_target = True)
+        WolperGrid_NN.update_target_hard(self.Qmain.actor,
+                                         self.Qtarget.actor)
+        WolperGrid_NN.update_target_hard(self.Qmain.critic,
+                                         self.Qtarget.critic)
 
     def _reset_state(self, current_obs):
         # Initial state
@@ -115,6 +112,7 @@ class WolperGrid(BaseAgent):
             "update_soft": UPDATE_TARGET_SOFT_TAU,
             "save_freq": SAVE_FREQ,
             "input_bias": INPUT_BIAS,
+            "k": K_RATIO,
             "reward": dict(r_instance)
         }
         hp_filename = "{}-hypers.json".format(self.name)
@@ -126,9 +124,8 @@ class WolperGrid(BaseAgent):
     def convert_obs(self, observation):
         return wg_convert_obs(observation)
 
-    def convert_act(self, netbus, netline, netdisp):
-        netstate = (netbus, netline, netdisp)
-        return wg_convert_act(netstate)
+    def convert_act(self, act_idx):
+        return super().convert_act(act_idx)
 
     def reset(self, observation):
         self._reset_state(observation)
@@ -136,12 +133,9 @@ class WolperGrid(BaseAgent):
     def my_act(self, observation, reward, done=False):
         self.obs = observation
         state = self.convert_obs(observation)
-        net_pred = self.Qmain.predict_move(state)
-        bus = net_pred[0][1]
-        line = net_pred[0][2]
-        disp = net_pred[0][3]
+        act_idx = self.Qmain.predict_move(state)
 
-        return self.convert_act(bus, line, disp)
+        return self.convert_act(act_idx)
 
     def load(self, path):
         self.Qmain.load_network(path)
@@ -151,48 +145,55 @@ class WolperGrid(BaseAgent):
     def save(self, path):
         self.Qmain.save_network(path)
 
-    def train_episode(self, m):
+    def train_episode(self, m, env):
         t = 0
         total_reward = 0
         episode_illegal = 0
         episode_ambiguous = 0
 
-        print("Episode [{:04d}] - Epsilon {}".format(m, self.epsilon))
+        start_episode_msg = "Episode [{:04d}] - Epsilon {}"
+        print(start_episode_msg.format(m, self.epsilon))
+
         # Loop for t in episode steps
-        while self.done is False:
+        max_t = env.chronics_handler.max_timestep() - 1
+        while self.done is False and t < max_t:
             # Choose an action
-            if np.random.rand(1) < self.epsilon:
-                pred = self.Qmain.random_move(self.state, self.obs)
+            if np.random.rand(1) <= self.epsilon:
+                pred, kpred = self.Qmain.random_move(self.state)
             else:
-                pred = self.Qmain.predict_move(self.state, self.obs)
+                pred, kpred = self.Qmain.predict_move(self.state)
 
             # Convert it to a valid action
-            act = self.convert_act(pred[0][1], pred[0][2], pred[0][3])
+            act = self.convert_act(pred)
             # Execute action
             new_obs, reward, self.done, info = env.step(act)
             # Convert observation
             new_state = self.convert_obs(new_obs)
 
             # Save to current episode experience
-            self.episode_exp.append((self.state, pred[0], reward,
+            self.episode_exp.append((self.state, (pred, kpred), reward,
                                      self.done, new_state))
 
             # Minibatch train
             if self.exp_buffer.size() >= self.batch_size:
                 # Sample from experience buffer
-                batch = self.exp_buffer.sample()
+                batch = self.exp_buffer.sample(self.batch_size)
                 # Perform training
                 self._batch_train(batch, self.steps)
                 # Update target network towards primary network
                 if UPDATE_TARGET_SOFT_TAU > 0:
                     tau = UPDATE_TARGET_SOFT_TAU
-                    WolpGrid_NN.update_target_soft(self.Qmain.actor, self.Qtarget.actor, tau)
-                    WolpGrid_NN.update_target_soft(self.Qmain.critic, self.Qtarget.critic, tau)
+                    WolperGrid_NN.update_target_soft(self.Qmain.actor,
+                                                     self.Qtarget.actor, tau)
+                    WolperGrid_NN.update_target_soft(self.Qmain.critic,
+                                                     self.Qtarget.critic, tau)
                 # Update target completely
                 if UPDATE_TARGET_HARD_FREQ > 0 and \
                    (self.steps % UPDATE_TARGET_HARD_FREQ) == 0:
-                    WolpGrid_NN.update_target_hard(self.Qmain.actor, self.Qtarget.actor)
-                    WolpGrid_NN.update_target_hard(self.Qmain.critic, self.Qtarget.critic)
+                    WolperGrid_NN.update_target_hard(self.Qmain.actor,
+                                                     self.Qtarget.actor)
+                    WolperGrid_NN.update_target_hard(self.Qmain.critic,
+                                                     self.Qtarget.critic)
 
             # Increment step
             if info["is_illegal"]:
@@ -207,16 +208,16 @@ class WolperGrid(BaseAgent):
 
         # After episode
         self.epoch_rewards.append(total_reward)
-        self.epoch_alive.append(alive_steps)
+        self.epoch_alive.append(t)
         self.epoch_illegal.append(episode_illegal)
         self.epoch_ambiguous.append(episode_ambiguous)
-        print("Episode [{:04d}] -- Steps [{}] -- Reward [{}]".format(m, t, total_reward))
+        done_episode_msg = "Episode [{:04d}] -- Steps [{}] -- Reward [{}]"
+        print(done_episode_msg.format(m, t, total_reward))
 
     ## Training Procedure
     def train(self, env,
               iterations,
               save_path,
-              num_pre_training_steps = 0,
               logdir = "logs"):
         # Create file system related vars
         logpath = os.path.join(logdir, self.name)
@@ -225,13 +226,20 @@ class WolperGrid(BaseAgent):
         self.tf_writer = tf.summary.create_file_writer(logpath, name=self.name)
         self._save_hyperparameters(save_path, env, iterations)
 
+        # Shuffle training data
+        def shuff(x):
+            lx = len(x)
+            s = np.random.choice(lx, size=lx, replace=False)
+            return x[s]
+        env.chronics_handler.shuffle(shuffler=shuff)
+        
         # Training loop, over M episodes
         for m in range(iterations):
             init_obs = env.reset() # This shouldn't raise
             self.reset(init_obs)
 
             # Enter episode
-            self.train_episode(m)
+            self.train_episode(m, env)
             
             # Push last episode experience to experience buffer
             self._register_experience(self.episode_exp)
@@ -242,14 +250,6 @@ class WolperGrid(BaseAgent):
                 self.epsilon -= STEP_EPSILON
             if self.epsilon < FINAL_EPSILON:
                 self.epsilon = FINAL_EPSILON
-
-            # Shuffle the data every now and then
-            if m % SUFFLE_FREQ == 0:
-                def shuff(x):
-                    lx = len(x)
-                    s = np.random.choice(lx, size=lx, replace=False)
-                    return x[s]
-                env.chronics_handler.shuffle(shuffler=shuff)
 
             # Log to tensorboard every 100 episodes
             if m % SAVE_FREQ == 0:
@@ -305,24 +305,23 @@ class WolperGrid(BaseAgent):
         """Trains network to fit given parameters"""
         input_shape = (self.batch_size,
                        self.observation_size)
-        q_data = np.vstack(batch[:, 0])
-        q_data = q_data.reshape(input_shape)
-        q1_data = np.vstack(batch[:, 4])
-        q1_data = q1_data.reshape(input_shape)
-        q_input = [q_data]
-        q1_input = [q1_data]
+        t_data = np.vstack(batch[0])
+        t_data = t_data.reshape(input_shape)
+        t1_data = np.vstack(batch[4])
+        t1_data = t1_data.reshape(input_shape)
+        t_input = [t_data]
+        t1_input = [t1_data]
 
         # Save the graph just the first time
         if step == 0:
             tf.summary.trace_on()
 
         # T batch predict
-        pred = self.Qmain.model.predict(q_input,
-                                        batch_size=self.batch_size)
-        Q = pred[0]
-        batch_bus = pred[1]
-        batch_line = pred[2]
-        batch_disp = pred[3]
+        t_proto = self.Qmain.actor.predict(t_input,
+                                           batch_size=self.batch_size)
+        t_input_critic = [t_data, t_proto]
+        t_kQ = self.Qmain.critic.predict(t_input_critic,
+                                         batch_size=self.batch_size)
 
         ## Log graph once and disable graph logging
         if step == 0:
@@ -330,29 +329,31 @@ class WolperGrid(BaseAgent):
                 tf.summary.trace_export(self.name + "-graph", step)
 
         # T+1 batch predict
-        Qn, *_ = self.Qtarget.model.predict(q1_input,
+        t1_proto = self.Qtarget.actor.predict(t1_input,
+                                            batch_size=self.batch_size)
+        t1_input_critic = [t_data, t_proto]
+        t1_kQ = self.Qtarget.critic.predict(t1_input_critic,
                                             batch_size=self.batch_size)
         
-        # Compute batch Q update to Qtarget
+        # Compute batch critic / actor targets
+        Qtarget = np.array(t_kQ)
+        Ptarget = np.zeros_like(t_proto)
         for i in range(self.batch_size):
-            idx = i * (self.trace_length - 1)
-            a = batch[idx][1]
-            grid = a[0]
-            batch_bus[i][:] = a[1][:]
-            batch_line[i][:] = a[2][:]
-            batch_disp[i][:] = a[3][:]
-            r = batch[idx][2]
-            d = batch[idx][3]
-            Q[i][grid] = r
-            if d == False:
-                Q[i][grid] += DISCOUNT_FACTOR * Qn[i][grid]
+            a = batch[1][i][0]
+            kA = batch[1][i][1]
+            r = batch[2][i]
+            d = 1.0 - float(batch[3][i])
+            Qtarget[i][kA] = r + d * DISCOUNT_FACTOR * np.argmax(t1_kQ[i])
+            Ptarget[i][:] = self.convert_act(a).to_vect()[:]
 
         # Batch train
-        batch_x = [q_data]
-        batch_y = [
-            Q,
-            batch_bus, batch_line, batch_disp
-        ]
-        loss = self.Qmain.model.train_on_batch(batch_x, batch_y)
-        loss = loss[0]
-        self.loss = loss
+        batch_x_critic = [t_data, t_proto]
+        batch_y_critic = [Qtarget]
+        loss_critic = self.Qmain.critic.train_on_batch(batch_x_critic,
+                                                       batch_y_critic)
+        batch_x_actor = [t_data]
+        batch_y_actor = [Ptarget]
+        loss_actor = self.Qmain.actor.train_on_batch(batch_x_actor,
+                                                     batch_y_actor)        
+
+        self.loss = loss_actor
