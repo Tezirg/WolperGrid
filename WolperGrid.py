@@ -11,12 +11,12 @@ from ReplayBuffer import ReplayBuffer
 from WolperGrid_NN import WolperGrid_NN
 from wg_util import *
 
-INITIAL_EPSILON = 0.90
-FINAL_EPSILON = 0.0
-DECAY_EPSILON = 1024*64
+INITIAL_EPSILON = 0.99
+FINAL_EPSILON = 0.001
+DECAY_EPSILON = 1024*2
 STEP_EPSILON = (INITIAL_EPSILON-FINAL_EPSILON)/DECAY_EPSILON
 DISCOUNT_FACTOR = 0.99
-REPLAY_BUFFER_SIZE = 1024*4
+REPLAY_BUFFER_SIZE = 1024*8
 UPDATE_TARGET_HARD_FREQ = -1
 UPDATE_TARGET_SOFT_TAU = 1e-3
 INPUT_BIAS = 0.0
@@ -70,7 +70,8 @@ class WolperGrid(AgentWithConverter):
         self.epoch_ambiguous = []
         self.episode_exp = []
         self.epsilon = INITIAL_EPSILON
-        self.loss = 42.0
+        self.loss_actor = 42.0
+        self.loss_critic = 42.0
         self.Qtarget = WolperGrid_NN(self.observation_space,
                                      self.action_space,
                                      k_ratio = K_RATIO,
@@ -251,9 +252,8 @@ class WolperGrid(AgentWithConverter):
             if self.epsilon < FINAL_EPSILON:
                 self.epsilon = FINAL_EPSILON
 
-            # Log to tensorboard every 100 episodes
-            if m % SAVE_FREQ == 0:
-                self._tf_log_summary(self.loss, m)
+            # Log to tensorboard
+            self._tf_log_summary(m)
 
             # Save the network every 100 episodes
             if m > 0 and m % SAVE_FREQ == 0:
@@ -262,8 +262,9 @@ class WolperGrid(AgentWithConverter):
         # Save model after all iterations
         self.save(modelpath)
 
-    def _tf_log_summary(self, loss, step):
-        print("loss =", loss)
+    def _tf_log_summary(self, step):
+        print("loss actor = ", self.loss_actor)
+        print("loss critic = ", self.loss_critic)
         with self.tf_writer.as_default():
             mean_reward = np.mean(self.epoch_rewards)
             mean_alive = np.mean(self.epoch_alive)
@@ -299,7 +300,8 @@ class WolperGrid(AgentWithConverter):
             tf.summary.scalar("mean_ambiguous", mean_ambiguous, step)
             tf.summary.scalar("mean_ambiguous_100", mean_ambiguous_100, step)
             tf.summary.scalar("mean_ambiguous_10", mean_ambiguous_10, step)
-            tf.summary.scalar("loss", loss, step)
+            tf.summary.scalar("loss_actor", self.loss_actor, step)
+            tf.summary.scalar("loss_critic", self.loss_critic, step)
         
     def _batch_train(self, batch, step):
         """Trains network to fit given parameters"""
@@ -356,4 +358,5 @@ class WolperGrid(AgentWithConverter):
         loss_actor = self.Qmain.actor.train_on_batch(batch_x_actor,
                                                      batch_y_actor)        
 
-        self.loss = loss_actor
+        self.loss_critic = loss_critic
+        self.loss_actor = loss_actor
