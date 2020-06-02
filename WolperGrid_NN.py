@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pyflann as pf
 import tensorflow as tf
@@ -263,12 +264,21 @@ class WolperGrid_NN(object):
             var.assign(var_update + var_persist)
 
     def save_network(self, path):
-        # Saves model at specified path as h5 file
-        # nothing has changed
-        self.model.save_weights(path)
+        # Saves model at specified path
+
+        # Compute paths
+        actor_path = os.path.join(path, "actor.tf")
+        critic_path = os.path.join(path, "critic.tf")
+
+        self.actor.save_weights(actor_path)
+        self.critic.save_weights(critic_path)
         print("Successfully saved model at: {}".format(path))
 
     def load_network(self, path):
-        # nothing has changed
-        self.model.load_weights(path)
+        # Compute paths
+        actor_path = os.path.join(path, "actor.tf")
+        critic_path = os.path.join(path, "critic.tf")
+
+        self.actor.load_weights(actor_path)
+        self.critic.load_weights(critic_path)
         print("Succesfully loaded network from: {}".format(path))
