@@ -20,7 +20,7 @@ REPLAY_BUFFER_SIZE = 1024*8
 UPDATE_TARGET_HARD_FREQ = -1
 UPDATE_TARGET_SOFT_TAU = 1e-3
 INPUT_BIAS = 0.0
-SAVE_FREQ = 100
+SAVE_FREQ = 10
 K_RATIO = 0.05
 
 class WolperGrid(AgentWithConverter):
@@ -223,7 +223,8 @@ class WolperGrid(AgentWithConverter):
         # Create file system related vars
         logpath = os.path.join(logdir, self.name)
         os.makedirs(save_path, exist_ok=True)
-        modelpath = os.path.join(save_path, self.name + ".tf")
+        modelpath = os.path.join(save_path, self.name)
+        os.makedirs(modelpath, exist_ok=True)
         self.tf_writer = tf.summary.create_file_writer(logpath, name=self.name)
         self._save_hyperparameters(save_path, env, iterations)
 
@@ -311,14 +312,13 @@ class WolperGrid(AgentWithConverter):
         t_data = t_data.reshape(input_shape)
         t1_data = np.vstack(batch[4])
         t1_data = t1_data.reshape(input_shape)
-        t_input = [t_data]
-        t1_input = [t1_data]
 
         # Save the graph just the first time
         if step == 0:
             tf.summary.trace_on()
 
         # T batch predict
+        t_input = [t_data]
         t_proto = self.Qmain.actor.predict(t_input,
                                            batch_size=self.batch_size)
         t_input_critic = [t_data, t_proto]
@@ -331,9 +331,10 @@ class WolperGrid(AgentWithConverter):
                 tf.summary.trace_export(self.name + "-graph", step)
 
         # T+1 batch predict
+        t1_input = [t1_data]
         t1_proto = self.Qtarget.actor.predict(t1_input,
                                               batch_size=self.batch_size)
-        t1_input_critic = [t_data, t_proto]
+        t1_input_critic = [t1_data, t1_proto]
         t1_kQ = self.Qtarget.critic.predict(t1_input_critic,
                                             batch_size=self.batch_size)
         
