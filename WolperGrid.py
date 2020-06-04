@@ -16,7 +16,7 @@ FINAL_EPSILON = 0.001
 DECAY_EPSILON = 1024*2
 STEP_EPSILON = (INITIAL_EPSILON-FINAL_EPSILON)/DECAY_EPSILON
 DISCOUNT_FACTOR = 0.99
-REPLAY_BUFFER_SIZE = 1024*8
+REPLAY_BUFFER_SIZE = 1024*16
 UPDATE_TARGET_HARD_FREQ = -1
 UPDATE_TARGET_SOFT_TAU = 1e-3
 INPUT_BIAS = 0.0
@@ -345,7 +345,7 @@ class WolperGrid(AgentWithConverter):
             a = batch[1][i][0]
             kA = batch[1][i][1]
             r = batch[2][i]
-            d = 1.0 - float(batch[3][i])
+            d = 1.0 - float(batch[3][i]) # 0.0 if done
             Qtarget[i][kA] = r + d * DISCOUNT_FACTOR * np.argmax(t1_kQ[i])
             Ptarget[i][:] = self.convert_act(a).to_vect()[:]
 
