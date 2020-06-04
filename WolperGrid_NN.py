@@ -38,7 +38,7 @@ class WolperGrid_NN(object):
             self.construct_flann(action_space)
 
         # Inner NN sizes
-        self.encoded_size = 384
+        self.encoded_size = 512
 
         self.actor = None
         self.critic = None
@@ -53,17 +53,18 @@ class WolperGrid_NN(object):
         print("..Done")
 
         print("Flann build tree..")
+        pf.set_distance_type("euclidean")
         self.flann = pf.FLANN()
-        self.flann.build_index(flann_pts)
+        self.flann.build_index(flann_pts,
+                               algorithm="kmeans",
+                               branching=32,
+                               iterations=5,
+                               checks=16)
         print("..Done")
 
     def search_flann(self, act_vect):
         res, _ = self.flann.nn_index(act_vect,
-                                     num_neighbors=self.k,
-                                     algorithm="kmeans",
-                                     branching=32,
-                                     iterations=7,
-                                     checks=16)
+                                     num_neighbors=self.k)
         # Dont care about distance
         return res
 
@@ -147,7 +148,7 @@ class WolperGrid_NN(object):
         self.actor = tfk.Model(inputs=actor_inputs,
                                outputs=actor_outputs,
                                name="actor_" + self.__class__.__name__)
-        losses = [ self._clipped_me_loss ]
+        losses = [ self._me_loss ]
 
         self.actor_opt = tfko.Adam(lr=self.lr, clipnorm=1.0)
         self.actor.compile(loss=losses, optimizer=self.actor_opt)
@@ -205,22 +206,20 @@ class WolperGrid_NN(object):
                                 outputs=critic_outputs,
                                 name="critic_" + self.__class__.__name__)
 
-        losses = [ self._clipped_mse_loss ]
+        losses = [ self._mse_loss ]
         # Keras model
         self.critic_opt = tfko.Adam(lr=self.lr, clipnorm=1.0)
         self.critic.compile(loss=losses, optimizer=self.critic_opt)        
 
-    def _clipped_me_loss(self, y_true, y_pred):
+    def _me_loss(self, y_true, y_pred):
         td_error = tf.math.abs(y_true - y_pred)
         loss = tf.math.reduce_mean(td_error, name="loss_me")
-        clipped_loss = tf.clip_by_value(loss, 0.0, 1e2, name="me_clip")
-        return clipped_loss
+        return loss
 
-    def _clipped_mse_loss(self, y_true, y_pred):
+    def _mse_loss(self, y_true, y_pred):
         loss = tf.math.reduce_mean(tf.math.square(y_true - y_pred),
                                    name="loss_mse")
-        clipped_loss = tf.clip_by_value(loss, 0.0, 1e3, name="mse_clip")
-        return clipped_loss
+        return loss
 
     def predict_move(self, data):
         input_shape = (1, self.observation_size)
