@@ -68,18 +68,20 @@ class WolperGrid_NN(object):
         # Dont care about distance
         return res
 
-    def forward_encode(self, layin, name):
-        # Three layers encoder
-        lay1 = tfkl.Dense(self.encoded_size + 256, name=name+"_fc1")(layin)
+    def forward_encode(self, layin, size, name):
+        # Multi layers encoder
+        lay1 = tfkl.Dense(size + 256, name=name+"_fc1")(layin)
         lay1 = tf.nn.leaky_relu(lay1, alpha=0.01, name=name+"_leak_fc1")
 
-        lay2 = tfkl.Dense(self.encoded_size + 128, name=name+"_fc2")(lay1)
+        lay2 = tfkl.Dense(size + 128, name=name+"_fc2")(lay1)
         lay2 = tf.nn.leaky_relu(lay2, alpha=0.01, name=name+"_leak_fc2")
 
-        lay3 = tfkl.Dense(self.encoded_size, name=name+"_fc3")(lay2)
+        lay3 = tfkl.Dense(size + 64, name=name+"_fc3")(lay2)
         lay3 = tf.nn.leaky_relu(lay3, alpha=0.01, name=name+"_leak_fc3")
 
-        return lay3
+        lay4 = tfkl.Dense(size, name=name+"_fc4")(lay3)
+
+        return lay4
 
     def forward_vec(self, hidden, out_size, name):
         vec_1 = tfkl.Dense(out_size + 128, name=name+"_fc1_vec")(hidden)
@@ -99,7 +101,9 @@ class WolperGrid_NN(object):
                                 name='actor_obs')
 
         # Forward encode
-        hidden = self.forward_encode(input_layer, "actor_encode")
+        hidden = self.forward_encode(input_layer,
+                                     self.encoded_size,
+                                     "actor_encode")
 
         # Lines
         set_line = self.forward_vec(hidden, self.n_line,
@@ -133,7 +137,7 @@ class WolperGrid_NN(object):
         # Redispatch
         redisp = self.forward_vec(hidden, self.disp_size, "actor_redisp")
         # To action range [-1;1]
-        redisp = tf.nn.tanh(redisp, name="actro_redisp_tanh")
+        redisp = tf.nn.tanh(redisp, name="actor_redisp_tanh")
         
         # Debug redisp tensor shape
         print ("redisp shape=", redisp.shape)
@@ -150,7 +154,7 @@ class WolperGrid_NN(object):
                                name="actor_" + self.__class__.__name__)
         losses = [ self._me_loss ]
 
-        self.actor_opt = tfko.Adam(lr=self.lr, clipnorm=1.0)
+        self.actor_opt = tfko.Adam(lr=self.lr, clipnorm=10.0)
         self.actor.compile(loss=losses, optimizer=self.actor_opt)
 
     def construct_wg_critic(self):
@@ -165,83 +169,38 @@ class WolperGrid_NN(object):
                                 shape=input_proto_shape,
                                 name='critic_proto')
 
-        # Forward encode
-        encoded_obs = self.forward_encode(input_obs, "critic_obs")
-        encoded_act = self.forward_encode(input_proto, "critic_act")
+        input_concat = tf.concat([input_obs, input_proto], axis=-1,
+                                 name="critic_concat")
 
-        hidden = tf.concat([encoded_obs, encoded_act], axis=-1,
-                           name="critic_concat")
+        a1 = tfkl.Dense(512, name="critic_linear")(input_concat)
+        a2 = tfkl.LayerNormalization(name="critic_layN")(a1)
+        a3 = tf.nn.tanh(a2)
 
-        # Forward adv/val streams
-        ## Adv
-        advantage = tfkl.Dense(self.k // 4,
-                               name="critic_fc_adv1")(hidden)
-        advantage = tf.nn.relu(advantage, name="critic_adv_relu1")
-        advantage = tfkl.Dense(self.k // 2,
-                               name="critic_fc_adv2")(advantage)
-        advantage = tf.nn.relu(advantage, name="critic_adv_relu2")
-        advantage = tfkl.Dense(self.k, name="critic_adv")(advantage)
-
-        advantage_mean = tf.math.reduce_mean(advantage, axis=-1,
-                                             keepdims=True,
-                                             name="critic_adv_mean")
-        advantage = tfkl.subtract([advantage, advantage_mean],
-                                  name="critic_adv_subtract")
-        ## Val
-        value = tfkl.Dense(self.k // 4,
-                           name="critic_fc_val1")(hidden)
-        value = tf.nn.relu(value, name="critic_val_relu1")
-        value = tfkl.Dense(self.k // 2,
-                           name="critic_fc_val2")(value)
-        value = tf.nn.relu(value, name="critic_val_relu2")
-        value = tfkl.Dense(1, name="critic_val")(value)
-
-        # Q values for K closest actions
-        kQ = tf.math.add(value, advantage, name="critic_kQ")
+        a4 = self.forward_encode(a3, 128, "critic_encode")
+        Q = self.forward_vec(a4, 1, "critic_Q")
 
         # Backwards pass
         critic_inputs = [ input_obs, input_proto ]
-        critic_outputs = [ kQ ]
+        critic_outputs = [ Q ]
         self.critic = tfk.Model(inputs=critic_inputs,
                                 outputs=critic_outputs,
                                 name="critic_" + self.__class__.__name__)
 
         losses = [ self._mse_loss ]
         # Keras model
-        self.critic_opt = tfko.Adam(lr=self.lr, clipnorm=1.0)
+        self.critic_opt = tfko.Adam(lr=self.lr, clipnorm=20.0)
         self.critic.compile(loss=losses, optimizer=self.critic_opt)        
 
     def _me_loss(self, y_true, y_pred):
-        td_error = tf.math.abs(y_true - y_pred)
-        loss = tf.math.reduce_mean(td_error, name="loss_me")
+        error = tf.math.abs(y_true - y_pred)
+        loss = tf.math.reduce_mean(error, name="loss_me")
         return loss
 
     def _mse_loss(self, y_true, y_pred):
-        loss = tf.math.reduce_mean(tf.math.square(y_true - y_pred),
+        sq_error = tf.math.square(y_true - y_pred)
+        loss = tf.math.reduce_mean(sq_error,
                                    name="loss_mse")
         return loss
-
-    def predict_move(self, data):
-        input_shape = (1, self.observation_size)
-        data_input = data.reshape(input_shape)
-        actor_input = [data_input]
-
-        proto = self.actor.predict(actor_input, batch_size = 1)
-
-        critic_input = [data_input, proto]
-        kQ = self.critic.predict(critic_input)
-
-        # Get k actions
-        k_acts = self.search_flann(proto)
-        # Get index of highest q value
-        k_index = np.argmax(kQ)
-        # Select action
-        act_index = k_acts[0][k_index]
-
-        return act_index, k_index
-
-    def random_move(self, data):
-        return np.random.randint(self.act_n), np.random.randint(self.k)
 
     @staticmethod
     def update_target_hard(source_model, target_model):

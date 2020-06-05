@@ -13,7 +13,7 @@ from wg_util import *
 
 INITIAL_EPSILON = 0.99
 FINAL_EPSILON = 0.001
-DECAY_EPSILON = 1024*2
+DECAY_EPSILON = 256
 STEP_EPSILON = (INITIAL_EPSILON-FINAL_EPSILON)/DECAY_EPSILON
 DISCOUNT_FACTOR = 0.99
 REPLAY_BUFFER_SIZE = 1024*16
@@ -21,7 +21,7 @@ UPDATE_TARGET_HARD_FREQ = -1
 UPDATE_TARGET_SOFT_TAU = 1e-3
 INPUT_BIAS = 0.0
 SAVE_FREQ = 10
-K_RATIO = 0.05
+K_RATIO = 0.1
 
 class WolperGrid(AgentWithConverter):
     def __init__(self,
@@ -55,6 +55,7 @@ class WolperGrid(AgentWithConverter):
                                    k_ratio = K_RATIO,
                                    learning_rate = self.lr,
                                    is_training = self.is_training)
+
         # Setup training vars if needed
         if self.is_training:
             self._init_training()
@@ -160,9 +161,9 @@ class WolperGrid(AgentWithConverter):
         while self.done is False and t < max_t:
             # Choose an action
             if np.random.rand(1) <= self.epsilon:
-                pred, kpred = self.Qmain.random_move(self.state)
+                pred = self.random_move(self.state)
             else:
-                pred, kpred = self.Qmain.predict_move(self.state)
+                pred = self.predict_move(self.state)
 
             # Convert it to a valid action
             act = self.convert_act(pred)
@@ -172,7 +173,7 @@ class WolperGrid(AgentWithConverter):
             new_state = self.convert_obs(new_obs)
 
             # Save to current episode experience
-            self.episode_exp.append((self.state, (pred, kpred), reward,
+            self.episode_exp.append((self.state, pred, reward,
                                      self.done, new_state))
 
             # Minibatch train
@@ -180,7 +181,7 @@ class WolperGrid(AgentWithConverter):
                 # Sample from experience buffer
                 batch = self.exp_buffer.sample(self.batch_size)
                 # Perform training
-                self._batch_train(batch, self.steps)
+                self._ddpg_train(batch, self.steps)
                 # Update target network towards primary network
                 if UPDATE_TARGET_SOFT_TAU > 0:
                     tau = UPDATE_TARGET_SOFT_TAU
@@ -190,7 +191,7 @@ class WolperGrid(AgentWithConverter):
                                                      self.Qtarget.critic, tau)
                 # Update target completely
                 if UPDATE_TARGET_HARD_FREQ > 0 and \
-                   (self.steps % UPDATE_TARGET_HARD_FREQ) == 0:
+                   (t % UPDATE_TARGET_HARD_FREQ) == 0:
                     WolperGrid_NN.update_target_hard(self.Qmain.actor,
                                                      self.Qtarget.actor)
                     WolperGrid_NN.update_target_hard(self.Qmain.critic,
@@ -206,6 +207,10 @@ class WolperGrid(AgentWithConverter):
             total_reward += reward
             self.obs = new_obs
             self.state = new_state
+
+            # Log to tensorboard
+            if m > 1 and self.steps % 100 == 0:
+                self._tf_log_summary(self.steps)
 
         # After episode
         self.epoch_rewards.append(total_reward)
@@ -252,9 +257,6 @@ class WolperGrid(AgentWithConverter):
                 self.epsilon -= STEP_EPSILON
             if self.epsilon < FINAL_EPSILON:
                 self.epsilon = FINAL_EPSILON
-
-            # Log to tensorboard
-            self._tf_log_summary(m)
 
             # Save the network every 100 episodes
             if m > 0 and m % SAVE_FREQ == 0:
@@ -303,61 +305,88 @@ class WolperGrid(AgentWithConverter):
             tf.summary.scalar("mean_ambiguous_10", mean_ambiguous_10, step)
             tf.summary.scalar("loss_actor", self.loss_actor, step)
             tf.summary.scalar("loss_critic", self.loss_critic, step)
-        
-    def _batch_train(self, batch, step):
-        """Trains network to fit given parameters"""
+
+    def predict_move(self, data):
+        input_shape = (1, self.observation_size)
+        data_input = data.reshape(input_shape)
+        actor_input = [data_input]
+        proto = self.Qmain.actor.predict(actor_input,batch_size=1)
+
+        # Get k actions
+        k_acts = self.Qmain.search_flann(proto)
+
+        # Batch K actions to Q values
+        crit_data = np.repeat(data_input, self.Qmain.k, axis=0)
+        crit_act = np.array([self.convert_act(a).to_vect() for a in k_acts[0]])
+        critic_input = [crit_data, crit_act]
+        Q = self.Qmain.critic.predict(critic_input)
+
+        # Get index of highest q value
+        k_index = np.argmax(Q)
+        # Get action index
+        act_index = k_acts[0][k_index]
+
+        return act_index
+
+    def random_move(self, data):
+        # Random action index
+        return np.random.randint(self.action_space.n)
+    
+    def _ddpg_train(self, batch, step):
+        grad_clip = 40.0
         input_shape = (self.batch_size,
                        self.observation_size)
         t_data = np.vstack(batch[0])
         t_data = t_data.reshape(input_shape)
+        t_a = np.array([self.convert_act(a).to_vect() for a in batch[1]])
         t1_data = np.vstack(batch[4])
         t1_data = t1_data.reshape(input_shape)
 
-        # Save the graph just the first time
-        if step == 0:
-            tf.summary.trace_on()
+        # Perform DDPG update as per DeepMind implementation:
+        # github.com/deepmind/acme/blob/master/acme/agents/ddpg/learning.py
+        with tf.GradientTape(persistent=True) as tape:
+            t_Q = self.Qmain.critic([t_data, t_a])
+            t1_a = self.Qtarget.actor([t1_data])
+            t1_Q = self.Qtarget.critic([t1_data, t1_a])
 
-        # T batch predict
-        t_input = [t_data]
-        t_proto = self.Qmain.actor.predict(t_input,
-                                           batch_size=self.batch_size)
-        t_input_critic = [t_data, t_proto]
-        t_kQ = self.Qmain.critic.predict(t_input_critic,
-                                         batch_size=self.batch_size)
+            # Flatten to [batch_size]
+            t_Q = tf.squeeze(t_Q, axis=-1)
+            t1_Q = tf.squeeze(t1_Q, axis=-1)
+            
+            d = (1.0 - batch[3]) * DISCOUNT_FACTOR
+            td_v = tf.stop_gradient(batch[2] + d * t1_Q)
+            
+            td_err = td_v - t_Q
+            loss_c = 0.5 * tf.square(td_err)
+            loss_critic = tf.math.reduce_mean(loss_c, axis=0)
 
-        ## Log graph once and disable graph logging
-        if step == 0:
-            with self.tf_writer.as_default():
-                tf.summary.trace_export(self.name + "-graph", step)
+            dpg_t_a = self.Qmain.actor([t_data])
+            dpg_t_q = self.Qmain.critic([t_data, dpg_t_a])
+            # DPG
+            dqda = tape.gradient([dpg_t_q], [dpg_t_a])[0]
+            dqda = tf.clip_by_norm(dqda, 1.0, axes=-1)
+            target_a = dqda + dpg_t_a
+            target_a = tf.stop_gradient(target_a)
+            loss_actor = 0.5 * tf.reduce_sum(tf.square(target_a - dpg_t_a),
+                                             axis=-1)
+            loss_actor = tf.reduce_mean(loss_actor, axis=0)
 
-        # T+1 batch predict
-        t1_input = [t1_data]
-        t1_proto = self.Qtarget.actor.predict(t1_input,
-                                              batch_size=self.batch_size)
-        t1_input_critic = [t1_data, t1_proto]
-        t1_kQ = self.Qtarget.critic.predict(t1_input_critic,
-                                            batch_size=self.batch_size)
+            # Gradients
+            actor_vars = self.Qmain.actor.trainable_variables
+            crit_vars = self.Qmain.critic.trainable_variables
+            
+            actor_grads = tape.gradient(loss_actor, actor_vars)
+            crit_grads = tape.gradient(loss_critic, crit_vars)
+
+            # Delete the tape manually because of the persistent=True flag.
+            del tape
+            
+            actor_grads = tf.clip_by_global_norm(actor_grads, grad_clip)[0]
+            crit_grads = tf.clip_by_global_norm(crit_grads, grad_clip)[0]
+
+            self.Qmain.actor_opt.apply_gradients(zip(actor_grads, actor_vars))
+            self.Qmain.critic_opt.apply_gradients(zip(crit_grads, crit_vars))
+
+        self.loss_critic = loss_critic.numpy()
+        self.loss_actor = loss_actor.numpy()
         
-        # Compute batch critic / actor targets
-        Qtarget = np.array(t_kQ)
-        Ptarget = np.zeros_like(t_proto)
-        for i in range(self.batch_size):
-            a = batch[1][i][0]
-            kA = batch[1][i][1]
-            r = batch[2][i]
-            d = 1.0 - float(batch[3][i]) # 0.0 if done
-            Qtarget[i][kA] = r + d * DISCOUNT_FACTOR * np.argmax(t1_kQ[i])
-            Ptarget[i][:] = self.convert_act(a).to_vect()[:]
-
-        # Batch train
-        batch_x_critic = [t_data, t_proto]
-        batch_y_critic = [Qtarget]
-        loss_critic = self.Qmain.critic.train_on_batch(batch_x_critic,
-                                                       batch_y_critic)
-        batch_x_actor = [t_data]
-        batch_y_actor = [Ptarget]
-        loss_actor = self.Qmain.actor.train_on_batch(batch_x_actor,
-                                                     batch_y_actor)        
-
-        self.loss_critic = loss_critic
-        self.loss_actor = loss_actor

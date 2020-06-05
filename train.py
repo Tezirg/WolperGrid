@@ -14,7 +14,6 @@ DEFAULT_NAME = "WolpGrid"
 DEFAULT_SAVE_DIR = "./models"
 DEFAULT_LOG_DIR = "./logs-train"
 DEFAULT_EPISODES = 10
-DEFAULT_TRACE_LEN = 12
 DEFAULT_BATCH_SIZE = 32
 DEFAULT_LR = 1e-5
 
@@ -86,7 +85,6 @@ if __name__ == "__main__":
     param = Parameters()
     #param.NO_OVERFLOW_DISCONNECTION = True
 
-
     env = make(args.data_dir,
                param=param,
                action_class=TopologyAndDispatchAction,
@@ -99,7 +97,7 @@ if __name__ == "__main__":
     # Register custom reward for training
     cr = env.reward_helper.template_reward
     #cr.addReward("bridge", BridgeReward(), 1.0)
-    #cr.addReward("distance", DistanceReward(), 5.0)
+    #cr.addReward("distance", DistanceReward(), 1.0)
     #cr.addReward("overflow", CloseToOverflowReward(), 1.0)
     cr.addReward("game", GameplayReward(), 2.0)
     #cr.addReward("eco", EconomicReward(), 2.0)
