@@ -17,6 +17,7 @@ DECAY_EPSILON = 256
 STEP_EPSILON = (INITIAL_EPSILON-FINAL_EPSILON)/DECAY_EPSILON
 DISCOUNT_FACTOR = 0.99
 REPLAY_BUFFER_SIZE = 1024*16
+UPDATE_FREQ = 64
 UPDATE_TARGET_HARD_FREQ = -1
 UPDATE_TARGET_SOFT_TAU = 1e-3
 INPUT_BIAS = 0.0
@@ -166,6 +167,7 @@ class WolperGrid(AgentWithConverter):
                 pred = self.predict_move(self.state)
 
             # Convert it to a valid action
+            act_v = self.Qmain.act_vects[pred]
             act = self.convert_act(pred)
             # Execute action
             new_obs, reward, self.done, info = env.step(act)
@@ -173,11 +175,12 @@ class WolperGrid(AgentWithConverter):
             new_state = self.convert_obs(new_obs)
 
             # Save to current episode experience
-            self.episode_exp.append((self.state, pred, reward,
-                                     self.done, new_state))
+            self.episode_exp.append((self.state, np.array(act_v),
+                                     reward, self.done, new_state))
 
             # Minibatch train
-            if self.exp_buffer.size() >= self.batch_size:
+            if self.exp_buffer.size() >= self.batch_size and \
+               self.steps % UPDATE_FREQ == 0:
                 # Sample from experience buffer
                 batch = self.exp_buffer.sample(self.batch_size)
                 # Perform training
@@ -317,7 +320,7 @@ class WolperGrid(AgentWithConverter):
 
         # Batch K actions to Q values
         crit_data = np.repeat(data_input, self.Qmain.k, axis=0)
-        crit_act = np.array([self.convert_act(a).to_vect() for a in k_acts[0]])
+        crit_act = np.array([self.Qmain.act_vects[a] for a in k_acts[0]])
         critic_input = [crit_data, crit_act]
         Q = self.Qmain.critic.predict(critic_input)
 
@@ -338,7 +341,7 @@ class WolperGrid(AgentWithConverter):
                        self.observation_size)
         t_data = np.vstack(batch[0])
         t_data = t_data.reshape(input_shape)
-        t_a = np.array([self.convert_act(a).to_vect() for a in batch[1]])
+        t_a = np.array(batch[1])
         t1_data = np.vstack(batch[4])
         t1_data = t1_data.reshape(input_shape)
 
@@ -364,7 +367,8 @@ class WolperGrid(AgentWithConverter):
             dpg_t_q = self.Qmain.critic([t_data, dpg_t_a])
             # DPG
             dqda = tape.gradient([dpg_t_q], [dpg_t_a])[0]
-            dqda = tf.clip_by_norm(dqda, 1.0, axes=-1)
+            #dqda = tf.clip_by_norm(dqda, 1.0, axes=-1)
+            #dqda = tf.clip_by_value(dqda, -1.0, 1.0)
             target_a = dqda + dpg_t_a
             target_a = tf.stop_gradient(target_a)
             loss_actor = 0.5 * tf.reduce_sum(tf.square(target_a - dpg_t_a),
@@ -381,8 +385,8 @@ class WolperGrid(AgentWithConverter):
             # Delete the tape manually because of the persistent=True flag.
             del tape
             
-            actor_grads = tf.clip_by_global_norm(actor_grads, grad_clip)[0]
-            crit_grads = tf.clip_by_global_norm(crit_grads, grad_clip)[0]
+            #actor_grads = tf.clip_by_global_norm(actor_grads, grad_clip)[0]
+            #crit_grads = tf.clip_by_global_norm(crit_grads, grad_clip)[0]
 
             self.Qmain.actor_opt.apply_gradients(zip(actor_grads, actor_vars))
             self.Qmain.critic_opt.apply_gradients(zip(crit_grads, crit_vars))

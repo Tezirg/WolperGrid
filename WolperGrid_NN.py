@@ -34,6 +34,7 @@ class WolperGrid_NN(object):
         self.flann = None
         self.act_n = action_space.n
         self.k = round(float(self.act_n) * self.k_ratio)
+        self.act_vects = None
         if not self.is_target:
             self.construct_flann(action_space)
 
@@ -47,8 +48,8 @@ class WolperGrid_NN(object):
 
     def construct_flann(self, action_space):
         print("Flann build action vectors..")
-        act_vects = [act.to_vect() for act in action_space.all_actions]
-        flann_pts = np.array(act_vects)
+        self.act_vects = [act.to_vect() for act in action_space.all_actions]
+        flann_pts = np.array(self.act_vects)
         print("act_n {} -- k {}".format(self.act_n, self.k))
         print("..Done")
 
