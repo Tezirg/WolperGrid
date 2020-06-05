@@ -355,18 +355,21 @@ class WolperGrid(AgentWithConverter):
             # Flatten to [batch_size]
             t_Q = tf.squeeze(t_Q, axis=-1)
             t1_Q = tf.squeeze(t1_Q, axis=-1)
-            
+
+            # Critic loss / squared td error
+            # github.com/deepmind/trfl/blob/master/trfl/value_ops.py#L34
             d = (1.0 - batch[3]) * DISCOUNT_FACTOR
             td_v = tf.stop_gradient(batch[2] + d * t1_Q)
-            
             td_err = td_v - t_Q
             loss_c = 0.5 * tf.square(td_err)
             loss_critic = tf.math.reduce_mean(loss_c, axis=0)
 
             dpg_t_a = self.Qmain.actor([t_data])
             dpg_t_q = self.Qmain.critic([t_data, dpg_t_a])
-            # DPG
+            # DPG / gradient sample
+            # github.com/deepmind/acme/blob/master/acme/losses/dpg.py#L21
             dqda = tape.gradient([dpg_t_q], [dpg_t_a])[0]
+            # Gradient clip if needed
             #dqda = tf.clip_by_norm(dqda, 1.0, axes=-1)
             #dqda = tf.clip_by_value(dqda, -1.0, 1.0)
             target_a = dqda + dpg_t_a
@@ -384,7 +387,8 @@ class WolperGrid(AgentWithConverter):
 
             # Delete the tape manually because of the persistent=True flag.
             del tape
-            
+
+            # Gradient clip if needed
             #actor_grads = tf.clip_by_global_norm(actor_grads, grad_clip)[0]
             #crit_grads = tf.clip_by_global_norm(crit_grads, grad_clip)[0]
 

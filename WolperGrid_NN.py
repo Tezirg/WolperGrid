@@ -173,12 +173,10 @@ class WolperGrid_NN(object):
         input_concat = tf.concat([input_obs, input_proto], axis=-1,
                                  name="critic_concat")
 
-        a1 = tfkl.Dense(512, name="critic_linear")(input_concat)
-        a2 = tfkl.LayerNormalization(name="critic_layN")(a1)
-        a3 = tf.nn.tanh(a2)
-
-        a4 = self.forward_encode(a3, 128, "critic_encode")
-        Q = self.forward_vec(a4, 1, "critic_Q")
+        a1 = tfkl.Dense(756, name="critic_linear")(input_concat)
+        a2 = tf.nn.relu(a1)
+        a3 = self.forward_encode(a2, 256, "critic_encode")
+        Q = self.forward_vec(a3, 1, "critic_Q")
 
         # Backwards pass
         critic_inputs = [ input_obs, input_proto ]
