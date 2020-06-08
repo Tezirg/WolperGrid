@@ -85,8 +85,17 @@ if __name__ == "__main__":
     param = Parameters()
     #param.NO_OVERFLOW_DISCONNECTION = True
 
+    try:
+        from lightsim2grid.LightSimBackend import LightSimBackend
+        backend = LightSimBackend()
+    except:
+        print ("Fall back on default PandaPowerBackend")
+        from grid2op.Backend import PandaPowerBackend
+        backend = PandaPowerBackend()
+
     env = make(args.data_dir,
                param=param,
+               backend=backend,
                action_class=TopologyAndDispatchAction,
                reward_class=CombinedScaledReward)
 

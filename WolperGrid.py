@@ -16,7 +16,7 @@ FINAL_EPSILON = 0.001
 DECAY_EPSILON = 256
 STEP_EPSILON = (INITIAL_EPSILON-FINAL_EPSILON)/DECAY_EPSILON
 DISCOUNT_FACTOR = 0.99
-REPLAY_BUFFER_SIZE = 1024*16
+REPLAY_BUFFER_SIZE = 1024*32
 UPDATE_FREQ = 96
 UPDATE_TARGET_HARD_FREQ = -1
 UPDATE_TARGET_SOFT_TAU = 1e-5
@@ -198,6 +198,9 @@ class WolperGrid(AgentWithConverter):
                                                      self.Qtarget.actor)
                     WolperGrid_NN.update_target_hard(self.Qmain.critic,
                                                      self.Qtarget.critic)
+            # Log to tensorboard
+            if self.steps > UPDATE_FREQ and self.steps % UPDATE_FREQ == 0:
+                self._tf_log_summary(self.steps)
 
             # Increment step
             if info["is_illegal"]:
@@ -209,10 +212,6 @@ class WolperGrid(AgentWithConverter):
             total_reward += reward
             self.obs = new_obs
             self.state = new_state
-
-            # Log to tensorboard
-            if m > 1 and self.steps > UPDATE_FREQ and self.steps % 100 == 0:
-                self._tf_log_summary(self.steps)
 
         # After episode
         self.epoch_rewards.append(total_reward)
@@ -326,7 +325,7 @@ class WolperGrid(AgentWithConverter):
         # Get Q values
         Q = np.zeros(self.Qmain.k)
         # By chunks
-        k_batch = 512
+        k_batch = 756
         k_rest = self.Qmain.k % k_batch
         k_batch_data = np.repeat(data_input, k_batch, axis=0)
         for i in range (0, self.Qmain.k, k_batch):
