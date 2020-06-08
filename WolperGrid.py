@@ -11,17 +11,17 @@ from ReplayBuffer import ReplayBuffer
 from WolperGrid_NN import WolperGrid_NN
 from wg_util import *
 
-INITIAL_EPSILON = 0.99
+INITIAL_EPSILON = 1.0
 FINAL_EPSILON = 0.001
 DECAY_EPSILON = 256
 STEP_EPSILON = (INITIAL_EPSILON-FINAL_EPSILON)/DECAY_EPSILON
 DISCOUNT_FACTOR = 0.99
 REPLAY_BUFFER_SIZE = 1024*16
-UPDATE_FREQ = 64
+UPDATE_FREQ = 96
 UPDATE_TARGET_HARD_FREQ = -1
-UPDATE_TARGET_SOFT_TAU = 1e-3
+UPDATE_TARGET_SOFT_TAU = 1e-5
 INPUT_BIAS = 0.0
-SAVE_FREQ = 10
+SAVE_FREQ = 16
 K_RATIO = 0.1
 
 class WolperGrid(AgentWithConverter):
@@ -167,7 +167,6 @@ class WolperGrid(AgentWithConverter):
                 pred = self.predict_move(self.state)
 
             # Convert it to a valid action
-            act_v = self.Qmain.act_vects[pred]
             act = self.convert_act(pred)
             # Execute action
             new_obs, reward, self.done, info = env.step(act)
@@ -175,7 +174,7 @@ class WolperGrid(AgentWithConverter):
             new_state = self.convert_obs(new_obs)
 
             # Save to current episode experience
-            self.episode_exp.append((self.state, np.array(act_v),
+            self.episode_exp.append((self.state, pred,
                                      reward, self.done, new_state))
 
             # Minibatch train
@@ -212,7 +211,7 @@ class WolperGrid(AgentWithConverter):
             self.state = new_state
 
             # Log to tensorboard
-            if m > 1 and self.steps % 100 == 0:
+            if m > 1 and self.steps > UPDATE_FREQ and self.steps % 100 == 0:
                 self._tf_log_summary(self.steps)
 
         # After episode
@@ -222,6 +221,12 @@ class WolperGrid(AgentWithConverter):
         self.epoch_ambiguous.append(episode_ambiguous)
         done_episode_msg = "Episode [{:04d}] -- Steps [{}] -- Reward [{}]"
         print(done_episode_msg.format(m, t, total_reward))
+        # Ensure arrays dont grow too much
+        if len(self.epoch_rewards) > 1000:
+            self.epoch_rewards = self.epoch_rewards[-1000:]
+            self.epoch_alive = self.epoch_alive[-1000:]
+            self.epoch_illegal = self.epoch_illegal[-1000:]
+            self.epoch_ambiguous = self.epoch_ambiguous[-1000:]
 
     ## Training Procedure
     def train(self, env,
@@ -318,11 +323,26 @@ class WolperGrid(AgentWithConverter):
         # Get k actions
         k_acts = self.Qmain.search_flann(proto)
 
-        # Batch K actions to Q values
-        crit_data = np.repeat(data_input, self.Qmain.k, axis=0)
-        crit_act = np.array([self.Qmain.act_vects[a] for a in k_acts[0]])
-        critic_input = [crit_data, crit_act]
-        Q = self.Qmain.critic.predict(critic_input)
+        # Get Q values
+        Q = np.zeros(self.Qmain.k)
+        # By chunks
+        k_batch = 512
+        k_rest = self.Qmain.k % k_batch
+        k_batch_data = np.repeat(data_input, k_batch, axis=0)
+        for i in range (0, self.Qmain.k, k_batch):
+            a_s = i
+            a_e = i + k_batch
+            if a_e >= self.Qmain.k:
+                a_e = i + k_rest
+                k_batch_data = k_batch_data[:k_rest]
+
+            act_idx_batch = k_acts[0][a_s:a_e]
+            act_batch_li = [self.Qmain.act_vects[a] for a in act_idx_batch]
+            act_batch = np.array(act_batch_li)
+            input_batch = [k_batch_data, act_batch]
+            Q_batch = self.Qmain.critic.predict(input_batch)
+            Q_batch = Q_batch.reshape(a_e - a_s)
+            Q[a_s:a_e] = Q_batch[:]
 
         # Get index of highest q value
         k_index = np.argmax(Q)
@@ -341,7 +361,7 @@ class WolperGrid(AgentWithConverter):
                        self.observation_size)
         t_data = np.vstack(batch[0])
         t_data = t_data.reshape(input_shape)
-        t_a = np.array(batch[1])
+        t_a = np.array([self.Qmain.act_vects[a] for a in batch[1]])
         t1_data = np.vstack(batch[4])
         t1_data = t1_data.reshape(input_shape)
 
@@ -388,12 +408,12 @@ class WolperGrid(AgentWithConverter):
             # Delete the tape manually because of the persistent=True flag.
             del tape
 
-            # Gradient clip if needed
-            #actor_grads = tf.clip_by_global_norm(actor_grads, grad_clip)[0]
-            #crit_grads = tf.clip_by_global_norm(crit_grads, grad_clip)[0]
+        # Gradient clip if needed
+        #actor_grads = tf.clip_by_global_norm(actor_grads, grad_clip)[0]
+        #crit_grads = tf.clip_by_global_norm(crit_grads, grad_clip)[0]
 
-            self.Qmain.actor_opt.apply_gradients(zip(actor_grads, actor_vars))
-            self.Qmain.critic_opt.apply_gradients(zip(crit_grads, crit_vars))
+        self.Qmain.actor_opt.apply_gradients(zip(actor_grads, actor_vars))
+        self.Qmain.critic_opt.apply_gradients(zip(crit_grads, crit_vars))
 
         self.loss_critic = loss_critic.numpy()
         self.loss_actor = loss_actor.numpy()

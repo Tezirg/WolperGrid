@@ -92,7 +92,7 @@ if __name__ == "__main__":
 
     # Do not load entires scenario at once
     # (faster exploration)
-    env.set_chunk_size(100)
+    env.set_chunk_size(256)
 
     # Register custom reward for training
     cr = env.reward_helper.template_reward
@@ -101,8 +101,9 @@ if __name__ == "__main__":
     #cr.addReward("overflow", CloseToOverflowReward(), 1.0)
     cr.addReward("game", GameplayReward(), 2.0)
     #cr.addReward("eco", EconomicReward(), 2.0)
-    cr.addReward("reco", LinesReconnectedReward(), 1.0)
-    cr.set_range(-1.0, 1.0)
+    #cr.addReward("reco", LinesReconnectedReward(), 1.0)
+    cr.addReward("l2rpn", L2RPNReward(), 1.0 / env.n_line)
+    cr.set_range(0.0, 1.0)
     # Initialize custom rewards
     cr.initialize(env)
 

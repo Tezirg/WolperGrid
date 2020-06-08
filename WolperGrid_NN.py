@@ -11,6 +11,8 @@ import tensorflow.keras.activations as tfka
 
 from wg_util import *
 
+kernel_init1 = tfk.initializers.he_normal()
+
 class WolperGrid_NN(object):
     def __init__(self,
                  observation_space,
@@ -59,7 +61,6 @@ class WolperGrid_NN(object):
         self.flann.build_index(flann_pts,
                                algorithm="kmeans",
                                branching=32,
-                               iterations=5,
                                checks=16)
         print("..Done")
 
@@ -71,28 +72,39 @@ class WolperGrid_NN(object):
 
     def forward_encode(self, layin, size, name):
         # Multi layers encoder
-        lay1 = tfkl.Dense(size + 256, name=name+"_fc1")(layin)
-        lay1 = tf.nn.leaky_relu(lay1, alpha=0.01, name=name+"_leak_fc1")
+        lay1 = tfkl.Dense(size + 256,
+                          kernel_initializer=kernel_init1,
+                          name=name+"_fc1")(layin)
+        lay1 = tf.nn.elu(lay1, name=name+"_relu_fc1")
 
-        lay2 = tfkl.Dense(size + 128, name=name+"_fc2")(lay1)
-        lay2 = tf.nn.leaky_relu(lay2, alpha=0.01, name=name+"_leak_fc2")
+        lay2 = tfkl.Dense(size + 128,
+                          kernel_initializer=kernel_init1,
+                          name=name+"_fc2")(lay1)
+        lay2 = tf.nn.elu(lay2, name=name+"_relu_fc2")
 
-        lay3 = tfkl.Dense(size + 64, name=name+"_fc3")(lay2)
-        lay3 = tf.nn.leaky_relu(lay3, alpha=0.01, name=name+"_leak_fc3")
-
-        lay4 = tfkl.Dense(size, name=name+"_fc4")(lay3)
+        lay3 = tfkl.Dense(size + 64,
+                          kernel_initializer=kernel_init1,
+                          name=name+"_fc3")(lay2)
+        lay3 = tf.nn.elu(lay3, name=name+"_relu_fc3")
+        
+        lay4 = tfkl.Dense(size,
+                          kernel_initializer=kernel_init1,
+                          name=name+"_fc4")(lay3)
 
         return lay4
 
     def forward_vec(self, hidden, out_size, name):
-        vec_1 = tfkl.Dense(out_size + 128, name=name+"_fc1_vec")(hidden)
-        vec_1 = tf.nn.leaky_relu(vec_1, alpha=0.01,
-                                 name=name+"_leak1_vec")
+        vec_1 = tfkl.Dense(out_size + 128,
+                           kernel_initializer=kernel_init1,
+                           name=name+"_fc1_vec")(hidden)
+        vec_1 = tf.nn.elu(vec_1, name=name+"_relu1_vec")
         vec_2 = tfkl.Dense(out_size + 64,
+                           kernel_initializer=kernel_init1,
                            name=name+"_fc2_vec")(vec_1)
-        vec_2 = tf.nn.leaky_relu(vec_2, alpha=0.01,
-                                 name=name+"_leak2_vec")
-        vec = tfkl.Dense(out_size, name=name+"_fc3_vec")(vec_2)
+        vec_2 = tf.nn.elu(vec_2, name=name+"_relu2_vec")
+        vec = tfkl.Dense(out_size,
+                         kernel_initializer=kernel_init1,
+                         name=name+"_fc3_vec")(vec_2)
         return vec
 
     def construct_wg_actor(self):
@@ -155,7 +167,7 @@ class WolperGrid_NN(object):
                                name="actor_" + self.__class__.__name__)
         losses = [ self._me_loss ]
 
-        self.actor_opt = tfko.Adam(lr=self.lr, clipnorm=10.0)
+        self.actor_opt = tfko.Adam(lr=self.lr)
         self.actor.compile(loss=losses, optimizer=self.actor_opt)
 
     def construct_wg_critic(self):
@@ -173,9 +185,15 @@ class WolperGrid_NN(object):
         input_concat = tf.concat([input_obs, input_proto], axis=-1,
                                  name="critic_concat")
 
-        a1 = tfkl.Dense(756, name="critic_linear")(input_concat)
-        a2 = tf.nn.relu(a1)
-        a3 = self.forward_encode(a2, 256, "critic_encode")
+        a1 = tfkl.Dense(1024,
+                        kernel_initializer=kernel_init1,
+                        name="critic_linear")(input_concat)
+        a2 = tf.nn.elu(a1, name="critic_relu1")
+        a3 = tfkl.Dense(728,
+                        kernel_initializer=kernel_init1,
+                        name="critic_linear2")(a2)
+        a4 = tf.nn.elu(a3, name="critic_relu2")
+        a3 = self.forward_encode(a4, 384, "critic_encode")
         Q = self.forward_vec(a3, 1, "critic_Q")
 
         # Backwards pass
@@ -187,7 +205,7 @@ class WolperGrid_NN(object):
 
         losses = [ self._mse_loss ]
         # Keras model
-        self.critic_opt = tfko.Adam(lr=self.lr, clipnorm=20.0)
+        self.critic_opt = tfko.Adam(lr=self.lr)
         self.critic.compile(loss=losses, optimizer=self.critic_opt)        
 
     def _me_loss(self, y_true, y_pred):

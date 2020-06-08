@@ -8,11 +8,11 @@ def wg_size_obs(observation_space):
         3 * observation_space.n_line,
         observation_space.n_sub,
         # Gen
-        observation_space.n_gen * 7,
+        observation_space.n_gen * 6,
         # Load
         observation_space.n_load * 4,
         # Line origins
-        observation_space.n_line * 5,
+        observation_space.n_line * 4,
         # Line extremities
         observation_space.n_line * 5
     ])
@@ -47,12 +47,12 @@ def wg_convert_obs(obs, bias=0.0):
     g_p = to_norm_vect(obs.prod_p, scale_v=1000.0)
     g_q = to_norm_vect(obs.prod_q, scale_v=1000.0)
     g_v = to_norm_vect(obs.prod_v, scale_v=1000.0)
-    g_tr = to_norm_vect(obs.target_dispatch, scale_v=500.0)
-    g_ar = to_norm_vect(obs.actual_dispatch, scale_v=500.0)
+    g_tr = to_norm_vect(obs.target_dispatch, scale_v=1000.0)
+    g_ar = to_norm_vect(obs.actual_dispatch, scale_v=1000.0)
     g_cost = to_norm_vect(obs.gen_cost_per_MW, pad_v=0.0, scale_v=1.0)
     g_buses = np.zeros(obs.n_gen)
     for gen_id in range(obs.n_gen):
-        g_buses[gen_id] = topo[g_pos[gen_id]]
+        g_buses[gen_id] = topo[g_pos[gen_id]] * 1.0
         if g_buses[gen_id] <= 0.0:
             g_buses[gen_id] = 0.0
     g_bus = to_norm_vect(g_buses, pad_v=-1.0, scale_v=3.0)
@@ -63,7 +63,7 @@ def wg_convert_obs(obs, bias=0.0):
     l_v = to_norm_vect(obs.load_v, scale_v=1000.0)
     l_buses = np.zeros(obs.n_load)
     for load_id in range(obs.n_load):
-        l_buses[load_id] = topo[l_pos[load_id]]
+        l_buses[load_id] = topo[l_pos[load_id]] * 1.0
         if l_buses[load_id] <= 0.0:
             l_buses[load_id] = 0.0
     l_bus = to_norm_vect(l_buses, pad_v=-1.0, scale_v=3.0)
@@ -74,7 +74,7 @@ def wg_convert_obs(obs, bias=0.0):
     or_v = to_norm_vect(obs.v_or, scale_v=1000.0)
     or_buses = np.zeros(obs.n_line)
     for line_id in range(obs.n_line):
-        or_buses[line_id] = topo[lor_pos[line_id]]
+        or_buses[line_id] = topo[lor_pos[line_id]] * 1.0
         if or_buses[line_id] <= 0.0:
             or_buses[line_id] = 0.0
     or_bus = to_norm_vect(or_buses, pad_v=-1.0, scale_v=3.0)
@@ -86,7 +86,7 @@ def wg_convert_obs(obs, bias=0.0):
     ex_v = to_norm_vect(obs.v_ex, scale_v=1000.0)
     ex_buses = np.zeros(obs.n_line)
     for line_id in range(obs.n_line):
-        ex_buses[line_id] = topo[lex_pos[line_id]]
+        ex_buses[line_id] = topo[lex_pos[line_id]] * 1.0
         if ex_buses[line_id] <= 0.0:
             ex_buses[line_id] = 0.0
     ex_bus = to_norm_vect(ex_buses, pad_v=-1.0, scale_v=3.0)
@@ -98,11 +98,11 @@ def wg_convert_obs(obs, bias=0.0):
         time_line_cd, time_line_nm, time_line_dm,
         time_sub_cd,
         # Gens
-        g_p, g_q, g_v, g_ar, g_tr, g_bus, g_cost,
+        g_p, g_q, g_v, g_ar, g_tr, g_bus,
         # Loads
         l_p, l_q, l_v, l_bus,
         # Origins
-        or_p, or_q, or_v, or_bus, or_rho,
+        or_p, or_q, or_v, or_bus,
         # Extremities
         ex_p, ex_q, ex_v, ex_bus, ex_rho
     ])
