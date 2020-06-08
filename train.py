@@ -15,7 +15,7 @@ DEFAULT_SAVE_DIR = "./models"
 DEFAULT_LOG_DIR = "./logs-train"
 DEFAULT_EPISODES = 10
 DEFAULT_BATCH_SIZE = 32
-DEFAULT_LR = 1e-5
+DEFAULT_LR = 1e-4
 
 
 def cli():
