@@ -50,7 +50,43 @@ class WolperGrid_NN(object):
 
     def construct_flann(self, action_space):
         print("Flann build action vectors..")
-        self.act_vects = [act.to_vect() for act in action_space.all_actions]
+
+        self.act_vects = []
+
+        # Compute sizes and offsets once
+        act_v_size = self.n_line * 2 + self.topo_size * 2 + self.disp_size
+        line_s_offset = [0, self.n_line]
+        line_c_offset = [line_s_offset[1], line_s_offset[1] + self.n_line ]
+        bus_s_offset = [line_c_offset[1], line_c_offset[1] + self.topo_size]
+        bus_c_offset = [bus_s_offset[1], bus_s_offset[1] + self.topo_size]
+        
+        for act in action_space.all_actions:
+            # Declare zero vect
+            act_v = np.zeros(act_v_size, dtype=np.float32)
+            
+            # Copy set line status
+            line_s_f = act._set_line_status.astype(np.float32)
+            act_v[line_s_offset[0]:line_s_offset[1]] = line_s_f
+
+            # Copy change line status
+            line_c_f = act._switch_line_status.astype(np.float32)
+            act_v[line_c_offset[0]:line_c_offset[1]] = line_c_f
+
+            # Copy set bus
+            bus_s_f = act._set_topo_vect.astype(np.float32)
+            act_v[bus_s_offset[0]:bus_s_offset[1]] = bus_s_f
+
+            # Copy change bus
+            bus_c_f = act._change_bus_vect.astype(np.float32)
+            act_v[bus_c_offset[0]:bus_c_offset[1]] = bus_c_f
+
+            # Dispatch linear rescale
+            disp = disp_act_to_nn(action_space, act._redispatch)
+            act_v[-self.disp_size:] = disp
+
+            # Add to list
+            self.act_vects.append(act_v)
+            
         flann_pts = np.array(self.act_vects)
         print("act_n {} -- k {}".format(self.act_n, self.k))
         print("..Done")
@@ -126,7 +162,8 @@ class WolperGrid_NN(object):
         # To set action range [-1;0;1]
         set_line = tf.nn.tanh(set_line, name="actor_set_line_tanh")
         # To change action range [0;1]
-        change_line = tf.nn.relu(change_line, name="actor_change_line_relu")
+        change_line = tf.math.sigmoid(change_line,
+                                      name="actor_change_line_sigm")
 
         # Debug lines tensor shapes
         print("set_line shape =", set_line.shape)
@@ -137,12 +174,12 @@ class WolperGrid_NN(object):
                                    "actor_set_bus")
         change_bus = self.forward_vec(hidden, self.topo_size,
                                       "actor_change_bus")
-        # To set action range [0;1;2]
-        set_bus = tf.math.sigmoid(set_bus, name="actor_set_bus_sig")
-        set_bus = tf.multiply(set_bus, float(self.n_bus))
+        # To set action range [-1;0;1]
+        set_bus = tf.nn.tanh(set_bus, name="actor_set_bus_tanh")
         # To change action range [0;1]
-        change_bus = tf.nn.relu(change_bus, "actor_change_bus_relu")
-        
+        change_bus = tf.math.sigmoid(change_bus,
+                                     name="actor_change_bus_sigm")
+
         # Debug buses tensors shapes
         print ("set_bus shape=", set_bus.shape)
         print ("change_bus shape=", change_bus.shape)

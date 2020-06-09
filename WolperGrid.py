@@ -275,7 +275,7 @@ class WolperGrid(AgentWithConverter):
     def _tf_log_summary(self, step):
         print("loss actor = ", self.loss_actor)
         print("loss critic = ", self.loss_critic)
-        print("exp buffer size = " = self.exp_buffer.size())
+        print("exp buffer size = ", self.exp_buffer.size())
         with self.tf_writer.as_default():
             mean_reward = np.mean(self.epoch_rewards)
             mean_alive = np.mean(self.epoch_alive)

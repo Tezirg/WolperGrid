@@ -108,98 +108,7 @@ def wg_convert_obs(obs, bias=0.0):
     ])
     return res + bias
 
-def netbus_rnd(obs, n_bus=2):
-    # Copy obs state
-    rnd_topo = np.zeros((n_bus, obs.dim_topo))
-    rnd_topo[0][obs.topo_vect == 1] = 1.0
-    rnd_topo[1][obs.topo_vect == 2] = 1.0
-    # Pick a random substation
-    rnd_sub = np.random.randint(obs.n_sub)
-    n_elem = obs.sub_info[rnd_sub]
-    # Pick a random number of elements to change
-    rnd_n_changes = np.random.randint(n_elem+1)
-    # Pick the elements to change at random
-    rnd_sub_elems = np.random.randint(0, n_elem, rnd_n_changes)
-    # Set the topo vect
-    sub_topo_pos = np.sum(obs.sub_info[0:rnd_sub])
-    for elem_pos in rnd_sub_elems:
-        rnd_bus = np.random.randint(n_bus)
-        rnd_topo[rnd_bus][sub_topo_pos + elem_pos] = 1.0
-        # Set the other buses to 0.0
-        for b in range(n_bus):
-            if b == rnd_bus:
-                continue;
-            rnd_topo[b][sub_topo_pos + elem_pos] = 0.0
-
-    return rnd_topo
-
-def netbus_to_act_setbus(obs, net_bus):
-    # n_bus x dim_topo x p([0.0; 1.0]) ->
-    # -> dim_topo x [0 unchanged; 1: bus_1; 2 bus_2 ]
-    # Pick the buses
-    act_setbus = np.argmax(net_bus, axis=0) + 1
-    # Don't set disconnected elements
-    act_setbus[obs.topo_vect <= 0] = 0
-    # Don't set elements already on the correct bus
-    act_setbus[act_setbus == obs.topo_vect] = 0
-
-    return act_setbus
-
-def act_setbus_to_netbus(obs, act_setbus, n_bus=2):
-    # [0 unchanged; 1: bus_1; 2 bus_2 ] ->
-    # n_bus x dim_topo x p([0.0; 1.0])
-    net_bus = np.zeros((n_bus, obs.dim_topo))
-    # Get buses from obs
-    for i in range(n_bus):
-        net_bus[i][obs.topo_vect == (i + 1)] = 1.0
-    # Override with buses from action
-    for i in range(n_bus):
-        net_bus[i][act_setbus == (i + 1)] = 1.0
-    
-    return net_bus
-
-def netline_rnd(obs):
-    rnd_lines = obs.line_status.astype(np.float32)
-    rnd_lineid = np.random.randint(obs.n_line)
-    rnd_linestatus = not obs.line_status[rnd_lineid]
-    rnd_lines[rnd_lineid] = np.int32(rnd_linestatus)
-
-    return rnd_lines
-            
-def netline_to_act_setstatus(obs, net_line):
-    # [0.0 Disconnect; > 0.0 Connect] ->
-    # -> [0.0 Unchanged; -1.0 Disconnect; 1.0 Connect]
-    act_setstatus = np.copy(net_line)
-    act_setstatus[net_line <= 0.0] = -1
-    act_setstatus[net_line > 0.0] = 1
-    # Do no 'set' already connected lines
-    act_setstatus[obs.line_status == (act_setstatus == 1)] = 0
-    # Do not 'set' already disconnected lines
-    act_setstatus[(obs.line_status == False) == (act_setstatus == -1)] = 0
-    return act_setstatus
-
-def act_setstatus_to_netline(obs, setstatus):
-    # [0.0 Unchanged; -1.0 Disconnect; 1.0 Connect] ->
-    # -> [0.0 Disconnect; > 0.0 Connect]
-    netline = np.zeros(obs.n_line)
-    # Copy obs status
-    netline[obs.line_status == True] = 1.0
-    # Override with action changes
-    netline[(obs.line_status == False) == (setstatus == 1)] = 1.0
-    netline[(obs.line_status == True) == (setstatus == -1)] = 0.0
-    return netline
-
-def netdisp_rnd(obs):
-    disp_rnd = np.zeros(obs.n_gen)
-    # Take random gen to disp
-    rnd_gen = np.random.randint(obs.n_gen)
-    # Take a random disp 
-    rnd_ramp = np.random.uniform(-1.0, 1.0)
-    disp_rnd[rnd_gen] = rnd_ramp
-
-    return disp_rnd
-
-def netdisp_to_act_redispatch(obs, net_disp):
+def disp_nn_to_act(obs, net_disp):
     # [-1.0;1.0] -> [-ramp_down;+ramp_up]
     act_redispatch = np.zeros(obs.n_gen)
     for i, d in enumerate(net_disp):
@@ -208,10 +117,10 @@ def netdisp_to_act_redispatch(obs, net_disp):
         rmin = obs.gen_max_ramp_down[i]
         rmax = obs.gen_max_ramp_up[i]
         r = np.interp(d, [-1.0, 1.0], [-rmin, rmax])
-        act_redispatch[i] = round(r) # Round at 1MW
+        act_redispatch[i] = r
     return act_redispatch
 
-def act_redispatch_to_netdisp(obs, act_redispatch):
+def disp_act_to_nn(obs, act_redispatch):
     # [-ramp_down;+ramp_up] -> [-1.0;1.0]
     netdisp = np.zeros(obs.n_gen)
     for i, d in enumerate(act_redispatch):
