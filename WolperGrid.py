@@ -57,7 +57,7 @@ class WolperGrid(AgentWithConverter):
         self.epoch_illegal = []
         self.epoch_ambiguous = []
         self.episode_exp = []
-        self.epsilon = INITIAL_EPSILON
+        self.epsilon = cfg.INITIAL_EPSILON
         self.loss_actor = 42.0
         self.loss_critic = 42.0
         self.Qtarget = WolperGrid_NN(self.observation_space,
