@@ -65,6 +65,7 @@ def train(env,
     WGConfig.LR = learning_rate
     WGConfig.BATCH_SIZE = batch_size
     WGConfig.VERBOSE = verbose
+    WGConfig.FINAL_EPSILON = 0.01
 
     # Limit gpu usage
     limit_gpu_usage()
