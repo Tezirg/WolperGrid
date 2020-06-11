@@ -302,6 +302,7 @@ class WolperGrid(AgentWithConverter):
             tf.summary.scalar("mean_ambiguous", mean_ambiguous, step)
             tf.summary.scalar("mean_ambiguous_100", mean_ambiguous_100, step)
             tf.summary.scalar("mean_ambiguous_10", mean_ambiguous_10, step)
+            tf.summary.scalar("epsilon", self.epsilon, step)
             tf.summary.scalar("loss_actor", self.loss_actor, step)
             tf.summary.scalar("loss_critic", self.loss_critic, step)
 
