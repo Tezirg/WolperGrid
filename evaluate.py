@@ -11,6 +11,7 @@ from grid2op.Action import *
 
 from WolperGrid import WolperGrid as WGAgent
 from l2rpn_baselines.utils.save_log_gif import save_log_gif
+from wg_util import limit_gpu_usage
 
 DEFAULT_LOGS_DIR = "./logs-eval"
 DEFAULT_NB_EPISODE = 1
@@ -41,7 +42,6 @@ def cli():
                         help="Verbose runner output")
     return parser.parse_args()
 
-
 def evaluate(env,
              load_path=None,
              logs_path=DEFAULT_LOGS_DIR,
@@ -52,8 +52,7 @@ def evaluate(env,
              save_gif=False):
 
     # Limit gpu usage
-    physical_devices = tf.config.list_physical_devices('GPU')
-    tf.config.experimental.set_memory_growth(physical_devices[0], True)
+    limit_gpu_usage()
 
     runner_params = env.get_params_for_runner()
     runner_params["verbose"] = args.verbose

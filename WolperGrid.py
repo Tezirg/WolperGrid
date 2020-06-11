@@ -8,30 +8,16 @@ from grid2op.Agent import AgentWithConverter
 from grid2op.Converter import IdToAct
 
 from ReplayBuffer import ReplayBuffer
+from WolperGrid_Config import WolperGrid_Config as cfg
 from WolperGrid_NN import WolperGrid_NN
 from wg_util import *
-
-INITIAL_EPSILON = 1.0
-FINAL_EPSILON = 0.001
-DECAY_EPSILON = 256
-STEP_EPSILON = (INITIAL_EPSILON-FINAL_EPSILON)/DECAY_EPSILON
-DISCOUNT_FACTOR = 0.99
-REPLAY_BUFFER_SIZE = 1024*32
-UPDATE_FREQ = 96
-UPDATE_TARGET_HARD_FREQ = -1
-UPDATE_TARGET_SOFT_TAU = 1e-5
-INPUT_BIAS = 0.0
-SAVE_FREQ = 16
-K_RATIO = 0.1
 
 class WolperGrid(AgentWithConverter):
     def __init__(self,
                  observation_space,
                  action_space,
                  name=__name__,
-                 batch_size=1,
-                 is_training=False,
-                 lr=1e-5):
+                 is_training=False):
         # Call parent constructor
         super().__init__(action_space,
                          action_space_converter=IdToAct)
@@ -41,9 +27,9 @@ class WolperGrid(AgentWithConverter):
         self.obs_space = observation_space
         self.observation_size = wg_size_obs(self.obs_space)
         self.name = name
-        self.batch_size = batch_size
+        self.batch_size = cfg.BATCH_SIZE
         self.is_training = is_training
-        self.lr = lr
+        self.lr = cfg.LR
 
         # Declare required vars
         self.Qmain = None
@@ -53,8 +39,8 @@ class WolperGrid(AgentWithConverter):
         # Load network graph
         self.Qmain = WolperGrid_NN(self.observation_space,
                                    self.action_space,
-                                   k_ratio = K_RATIO,
-                                   learning_rate = self.lr,
+                                   k_ratio = cfg.K_RATIO,
+                                   learning_rate = cfg.LR,
                                    is_training = self.is_training)
 
         # Setup training vars if needed
@@ -63,7 +49,7 @@ class WolperGrid(AgentWithConverter):
 
 
     def _init_training(self):
-        self.exp_buffer = ReplayBuffer(REPLAY_BUFFER_SIZE)
+        self.exp_buffer = ReplayBuffer(cfg.REPLAY_BUFFER_SIZE)
         self.done = False
         self.steps = 0
         self.epoch_rewards = []
@@ -76,7 +62,7 @@ class WolperGrid(AgentWithConverter):
         self.loss_critic = 42.0
         self.Qtarget = WolperGrid_NN(self.observation_space,
                                      self.action_space,
-                                     k_ratio = K_RATIO,
+                                     k_ratio = cfg.K_RATIO,
                                      learning_rate = self.lr,
                                      is_training = self.is_training,
                                      is_target = True)
@@ -104,18 +90,18 @@ class WolperGrid(AgentWithConverter):
         r_instance = env.reward_helper.template_reward
         hp = {
             "episodes": iters,
-            "lr": self.lr,
-            "batch_size": self.batch_size,
-            "e_start": INITIAL_EPSILON,
-            "e_end": FINAL_EPSILON,
-            "e_decay": DECAY_EPSILON,
-            "discount": DISCOUNT_FACTOR,
-            "buffer_size": REPLAY_BUFFER_SIZE,
-            "update_hard": UPDATE_TARGET_HARD_FREQ,
-            "update_soft": UPDATE_TARGET_SOFT_TAU,
-            "save_freq": SAVE_FREQ,
-            "input_bias": INPUT_BIAS,
-            "k": K_RATIO,
+            "lr": cfg.LR,
+            "batch_size": cfg.BATCH_SIZE,
+            "e_start": cfg.INITIAL_EPSILON,
+            "e_end": cfg.FINAL_EPSILON,
+            "e_decay": cfg.DECAY_EPSILON,
+            "discount": cfg.DISCOUNT_FACTOR,
+            "buffer_size": cfg.REPLAY_BUFFER_SIZE,
+            "update_hard": cfg.UPDATE_TARGET_HARD_FREQ,
+            "update_soft": cfg.UPDATE_TARGET_SOFT_TAU,
+            "save_freq": cfg.SAVE_FREQ,
+            "input_bias": cfg.INPUT_BIAS,
+            "k": cfg.K_RATIO,
             "reward": dict(r_instance)
         }
         hp_filename = "{}-hypers.json".format(self.name)
@@ -179,27 +165,28 @@ class WolperGrid(AgentWithConverter):
 
             # Minibatch train
             if self.exp_buffer.size() >= self.batch_size and \
-               self.steps % UPDATE_FREQ == 0:
+               self.steps % cfg.UPDATE_FREQ == 0:
                 # Sample from experience buffer
                 batch = self.exp_buffer.sample(self.batch_size)
                 # Perform training
                 self._ddpg_train(batch, self.steps)
                 # Update target network towards primary network
-                if UPDATE_TARGET_SOFT_TAU > 0:
-                    tau = UPDATE_TARGET_SOFT_TAU
+                if cfg.UPDATE_TARGET_SOFT_TAU > 0:
+                    tau = cfg.UPDATE_TARGET_SOFT_TAU
                     WolperGrid_NN.update_target_soft(self.Qmain.actor,
                                                      self.Qtarget.actor, tau)
                     WolperGrid_NN.update_target_soft(self.Qmain.critic,
                                                      self.Qtarget.critic, tau)
                 # Update target completely
-                if UPDATE_TARGET_HARD_FREQ > 0 and \
-                   (t % UPDATE_TARGET_HARD_FREQ) == 0:
+                if cfg.UPDATE_TARGET_HARD_FREQ > 0 and \
+                   (t % cfg.UPDATE_TARGET_HARD_FREQ) == 0:
                     WolperGrid_NN.update_target_hard(self.Qmain.actor,
                                                      self.Qtarget.actor)
                     WolperGrid_NN.update_target_hard(self.Qmain.critic,
                                                      self.Qtarget.critic)
             # Log to tensorboard
-            if self.steps > UPDATE_FREQ and self.steps % UPDATE_FREQ == 0:
+            if self.steps > cfg.UPDATE_FREQ and \
+               self.steps % cfg.UPDATE_FREQ == 0:
                 self._tf_log_summary(self.steps)
 
             # Increment step
@@ -260,13 +247,13 @@ class WolperGrid(AgentWithConverter):
             self.episode_exp = []
 
             # Slowly decay e-greedy rate
-            if self.epsilon > FINAL_EPSILON:
-                self.epsilon -= STEP_EPSILON
-            if self.epsilon < FINAL_EPSILON:
-                self.epsilon = FINAL_EPSILON
+            if self.epsilon > cfg.FINAL_EPSILON:
+                self.epsilon -= cfg.STEP_EPSILON
+            if self.epsilon < cfg.FINAL_EPSILON:
+                self.epsilon = cfg.FINAL_EPSILON
 
             # Save the network every 100 episodes
-            if m > 0 and m % SAVE_FREQ == 0:
+            if m > 0 and m % cfg.SAVE_FREQ == 0:
                 self.save(modelpath)
 
         # Save model after all iterations
@@ -378,7 +365,7 @@ class WolperGrid(AgentWithConverter):
 
             # Critic loss / squared td error
             # github.com/deepmind/trfl/blob/master/trfl/value_ops.py#L34
-            d = (1.0 - batch[3]) * DISCOUNT_FACTOR
+            d = (1.0 - batch[3]) * cfg.DISCOUNT_FACTOR
             td_v = tf.stop_gradient(batch[2] + d * t1_Q)
             td_err = td_v - t_Q
             loss_c = 0.5 * tf.square(td_err)

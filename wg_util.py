@@ -1,5 +1,23 @@
+import warnings
 import numpy as np
 import math
+import tensorflow as tf
+
+def limit_gpu_usage():
+    WARN_GPU_CONF = "Cannot configure tensorflow GPU memory growth property"
+    try:
+        devices = tf.config.list_physical_devices('GPU')
+        if len(devices) > 0:
+            tf.config.experimental.set_memory_growth(devices[0], True)
+    except AttributeError:
+        try:
+            devices = tf.config.experimental.list_physical_devices('GPU')
+            if len(devices) > 0:
+                tf.config.experimental.set_memory_growth(devices[0], True)
+        except Exception:
+            warnings.warn(WARN_GPU_CONF)
+    except Exception:
+        warnings.warn(WARN_GPU_CONF)
 
 def wg_size_obs(observation_space):
     dims = np.array([

@@ -1,10 +1,12 @@
 __all__ = [
-    "AnalogStateRDQN",
+    "WolperGrid",
+    "WolperGrid_Config",
     "evaluate",
     "train"
 ]
 
-from l2rpn_baselines.AnalogStateRDQN.GridRDQN import AnalogStateRDQN
-from l2rpn_baselines.AnalogStateRDQN.evaluate import evaluate
-from l2rpn_baselines.AnalogStateRDQN.train import train
+from l2rpn_baselines.WolperGrid.WolperGrid import WolperGrid
+from l2rpn_baselines.WolperGrid.WolperGrid_Config import WolperGrid_Config
+from l2rpn_baselines.WolperGrid.train import train
+from l2rpn_baselines.WolperGrid.evaluate import evaluate
 

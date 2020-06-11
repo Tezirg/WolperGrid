@@ -9,6 +9,8 @@ from grid2op.Action import *
 from grid2op.Parameters import Parameters
 
 from WolperGrid import WolperGrid as WGAgent
+from WolperGrid_Config import WolperGrid_Config as WGConfig
+from wg_util import limit_gpu_usage
 
 DEFAULT_NAME = "WolpGrid"
 DEFAULT_SAVE_DIR = "./models"
@@ -58,17 +60,17 @@ def train(env,
           batch_size=DEFAULT_BATCH_SIZE,
           learning_rate=DEFAULT_LR):
 
+    # Set config
+    WGConfig.LR = learning_rate
+    WGConfig.BATCH_SIZE = batch_size
+    
     # Limit gpu usage
-    physical_devices = tf.config.list_physical_devices('GPU')
-    if len(physical_devices) > 0:
-        tf.config.experimental.set_memory_growth(physical_devices[0], True)
+    limit_gpu_usage()
 
     agent = WGAgent(env.observation_space,
                     env.action_space,
                     name=name, 
-                    is_training=True,
-                    batch_size=batch_size,
-                    lr=learning_rate)
+                    is_training=True)
 
     if load_path is not None:
         agent.load(load_path)
