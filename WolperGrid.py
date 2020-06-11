@@ -140,8 +140,9 @@ class WolperGrid(AgentWithConverter):
         episode_illegal = 0
         episode_ambiguous = 0
 
-        start_episode_msg = "Episode [{:04d}] - Epsilon {}"
-        print(start_episode_msg.format(m, self.epsilon))
+        if cfg.VERBOSE:
+            start_episode_msg = "Episode [{:04d}] - Epsilon {}"
+            print(start_episode_msg.format(m, self.epsilon))
 
         # Loop for t in episode steps
         max_t = env.chronics_handler.max_timestep() - 1
@@ -205,8 +206,9 @@ class WolperGrid(AgentWithConverter):
         self.epoch_alive.append(t)
         self.epoch_illegal.append(episode_illegal)
         self.epoch_ambiguous.append(episode_ambiguous)
-        done_episode_msg = "Episode [{:04d}] -- Steps [{}] -- Reward [{}]"
-        print(done_episode_msg.format(m, t, total_reward))
+        if cfg.VERBOSE:
+            done_episode_msg = "Episode [{:04d}] -- Steps [{}] -- Reward [{}]"
+            print(done_episode_msg.format(m, t, total_reward))
         # Ensure arrays dont grow too much
         if len(self.epoch_rewards) > 1000:
             self.epoch_rewards = self.epoch_rewards[-1000:]
@@ -216,9 +218,10 @@ class WolperGrid(AgentWithConverter):
 
     ## Training Procedure
     def train(self, env,
-              iterations,
-              save_path,
-              logdir = "logs"):
+              iterations=100,
+              save_path="./models",
+              logdir="./logs-train"):
+
         # Create file system related vars
         logpath = os.path.join(logdir, self.name)
         os.makedirs(save_path, exist_ok=True)
@@ -260,9 +263,10 @@ class WolperGrid(AgentWithConverter):
         self.save(modelpath)
 
     def _tf_log_summary(self, step):
-        print("loss actor = ", self.loss_actor)
-        print("loss critic = ", self.loss_critic)
-        print("exp buffer size = ", self.exp_buffer.size())
+        if cfg.VERBOSE:
+            print("loss actor = ", self.loss_actor)
+            print("loss critic = ", self.loss_critic)
+            print("exp buffer size = ", self.exp_buffer.size())
         with self.tf_writer.as_default():
             mean_reward = np.mean(self.epoch_rewards)
             mean_alive = np.mean(self.epoch_alive)

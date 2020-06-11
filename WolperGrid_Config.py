@@ -16,6 +16,7 @@ class WolperGrid_Config():
     K_RATIO = 0.1
     BATCH_SIZE = 32
     LR = 1e-4
+    VERBOSE = True
 
     @staticmethod
     def from_json(json_in_path):

@@ -18,7 +18,7 @@ DEFAULT_LOG_DIR = "./logs-train"
 DEFAULT_EPISODES = 10
 DEFAULT_BATCH_SIZE = 32
 DEFAULT_LR = 1e-4
-
+DEFAULT_VERBOSE = True
 
 def cli():
     parser = argparse.ArgumentParser(description="Train baseline GridRDQN")
@@ -58,12 +58,14 @@ def train(env,
           load_path=None,
           logs_path=DEFAULT_LOG_DIR,
           batch_size=DEFAULT_BATCH_SIZE,
-          learning_rate=DEFAULT_LR):
+          learning_rate=DEFAULT_LR,
+          verbose=DEFAULT_VERBOSE):
 
     # Set config
     WGConfig.LR = learning_rate
     WGConfig.BATCH_SIZE = batch_size
-    
+    WGConfig.VERBOSE = verbose
+
     # Limit gpu usage
     limit_gpu_usage()
 
