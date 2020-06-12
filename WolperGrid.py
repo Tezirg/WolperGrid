@@ -56,10 +56,12 @@ class WolperGrid(AgentWithConverter):
         self.epoch_alive = []
         self.epoch_illegal = []
         self.epoch_ambiguous = []
+        self.epoch_do_nothing = []
         self.episode_exp = []
         self.epsilon = cfg.INITIAL_EPSILON
         self.loss_actor = 42.0
         self.loss_critic = 42.0
+        self.do_nothing_act = self.action_space({})
         self.Qtarget = WolperGrid_NN(self.observation_space,
                                      self.action_space,
                                      k_ratio = cfg.K_RATIO,
@@ -139,6 +141,7 @@ class WolperGrid(AgentWithConverter):
         total_reward = 0
         episode_illegal = 0
         episode_ambiguous = 0
+        episode_do_nothing = 0
 
         if cfg.VERBOSE:
             start_episode_msg = "Episode [{:04d}] - Epsilon {}"
@@ -196,6 +199,8 @@ class WolperGrid(AgentWithConverter):
                 episode_illegal += 1
             if info["is_ambiguous"]:
                 episode_ambiguous += 1
+            if act == self.do_nothing_act:
+                episode_do_nothing += 1
             t += 1
             self.steps += 1
             total_reward += reward
@@ -207,6 +212,7 @@ class WolperGrid(AgentWithConverter):
         self.epoch_alive.append(t)
         self.epoch_illegal.append(episode_illegal)
         self.epoch_ambiguous.append(episode_ambiguous)
+        self.epoch_do_nothing.append(episode_do_nothing)
         if cfg.VERBOSE:
             done_episode_msg = "Episode [{:04d}] -- Steps [{}] -- Reward [{}]"
             print(done_episode_msg.format(m, t, total_reward))
@@ -216,6 +222,7 @@ class WolperGrid(AgentWithConverter):
             self.epoch_alive = self.epoch_alive[-1000:]
             self.epoch_illegal = self.epoch_illegal[-1000:]
             self.epoch_ambiguous = self.epoch_ambiguous[-1000:]
+            self.epoch_do_nothing = self.epoch_do_nothing[-1000:]
 
     ## Training Procedure
     def train(self, env,
@@ -273,24 +280,29 @@ class WolperGrid(AgentWithConverter):
             mean_alive = np.mean(self.epoch_alive)
             mean_illegal = np.mean(self.epoch_illegal)
             mean_ambiguous = np.mean(self.epoch_ambiguous)
+            mean_dn = np.mean(self.epoch_do_nothing)
             mean_reward_10 = mean_reward
             mean_alive_10 = mean_alive
             mean_illegal_10 = mean_illegal
             mean_ambiguous_10 = mean_ambiguous
+            mean_dn_10 = mean_dn
             mean_reward_100 = mean_reward
             mean_alive_100 = mean_alive
             mean_illegal_100 = mean_illegal
             mean_ambiguous_100 = mean_ambiguous
+            mean_dn_100 = mean_dn
             if len(self.epoch_rewards) >= 10:
                 mean_reward_10 = np.mean(self.epoch_rewards[-10:])
                 mean_alive_10 = np.mean(self.epoch_alive[-10:])
                 mean_illegal_10 = np.mean(self.epoch_illegal[-10:])
                 mean_ambiguous_10 = np.mean(self.epoch_ambiguous[-10:])
+                mean_dn_10 = np.mean(self.epoch_do_nothing[-10:])
             if len(self.epoch_rewards) >= 100:
                 mean_reward_100 = np.mean(self.epoch_rewards[-100:])
                 mean_alive_100 = np.mean(self.epoch_alive[-100:])
                 mean_illegal_100 = np.mean(self.epoch_illegal[-100:])
                 mean_ambiguous_100 = np.mean(self.epoch_ambiguous[-100:])
+                mean_dn_100 = np.mean(self.epoch_do_nothing[-100:])
             tf.summary.scalar("mean_reward", mean_reward, step)
             tf.summary.scalar("mean_reward_100", mean_reward_100, step)
             tf.summary.scalar("mean_reward_10", mean_reward_10, step)
@@ -303,6 +315,8 @@ class WolperGrid(AgentWithConverter):
             tf.summary.scalar("mean_ambiguous", mean_ambiguous, step)
             tf.summary.scalar("mean_ambiguous_100", mean_ambiguous_100, step)
             tf.summary.scalar("mean_ambiguous_10", mean_ambiguous_10, step)
+            tf.summary.scalar("mean_donothing_100", mean_dn_100, step)
+            tf.summary.scalar("mean_donothing_10", mean_dn_10, step)
             tf.summary.scalar("epsilon", self.epsilon, step)
             tf.summary.scalar("loss_actor", self.loss_actor, step)
             tf.summary.scalar("loss_critic", self.loss_critic, step)
