@@ -187,6 +187,7 @@ class WolperGrid(AgentWithConverter):
                                                      self.Qtarget.critic)
             # Log to tensorboard
             if self.steps > cfg.UPDATE_FREQ and \
+               self.steps > 100 and \
                self.steps % cfg.UPDATE_FREQ == 0:
                 self._tf_log_summary(self.steps)
 
@@ -336,8 +337,23 @@ class WolperGrid(AgentWithConverter):
             Q_batch = Q_batch.reshape(a_e - a_s)
             Q[a_s:a_e] = Q_batch[:]
 
-        # Get index of highest q value
-        k_index = np.argmax(Q)
+        k_index = 0
+        if cfg.SIMULATE > 0:
+            # Simulate top critic [cfg.SIMULATE] Q values
+            # Keep the index of the highest simulate result
+            r = float('-inf')
+            k_indexes = np.argpartition(Q, -cfg.SIMULATE)[-cfg.SIMULATE:]
+            for k_idx in k_indexes:
+                act_idx = k_acts[0][k_idx]
+                act = self.convert_act(act_idx)
+                _, r_test, d_test, i_test = self.obs.simulate(act)
+                if r_test > r and d_test is False:
+                    r = r_test
+                    k_index = k_idx
+        else:
+            # Get index of highest critic q value
+            k_index = np.argmax(Q)
+
         # Get action index
         act_index = k_acts[0][k_index]
 

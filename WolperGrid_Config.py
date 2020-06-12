@@ -17,6 +17,7 @@ class WolperGrid_Config():
     BATCH_SIZE = 32
     LR = 1e-4
     VERBOSE = True
+    SIMULATE = 4
 
     @staticmethod
     def from_json(json_in_path):

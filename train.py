@@ -65,7 +65,9 @@ def train(env,
     WGConfig.LR = learning_rate
     WGConfig.BATCH_SIZE = batch_size
     WGConfig.VERBOSE = verbose
+    WGConfig.INITIAL_EPSILON = 1.0
     WGConfig.FINAL_EPSILON = 0.01
+    WGConfig.K_RATIO = 0.05
 
     # Limit gpu usage
     limit_gpu_usage()
@@ -102,7 +104,13 @@ if __name__ == "__main__":
                param=param,
                backend=backend,
                action_class=TopologyAndDispatchAction,
-               reward_class=CombinedScaledReward)
+               reward_class=CombinedScaledReward,
+               other_rewards = {
+                   "game": GameplayReward,
+                   "l2rpn": L2RPNReward,
+                   "linereco": LinesReconnectedReward,
+                   "overflow": CloseToOverflowReward
+               })
 
     # Do not load entires scenario at once
     # (faster exploration)
@@ -115,9 +123,9 @@ if __name__ == "__main__":
     #cr.addReward("overflow", CloseToOverflowReward(), 1.0)
     cr.addReward("game", GameplayReward(), 2.0)
     #cr.addReward("eco", EconomicReward(), 2.0)
-    #cr.addReward("reco", LinesReconnectedReward(), 1.0)
+    cr.addReward("reco", LinesReconnectedReward(), 1.0)
     cr.addReward("l2rpn", L2RPNReward(), 1.0 / env.n_line)
-    cr.set_range(0.0, 1.0)
+    cr.set_range(-1.0, 1.0)
     # Initialize custom rewards
     cr.initialize(env)
 
