@@ -10,6 +10,7 @@ from grid2op.Reward import *
 from grid2op.Action import *
 
 from WolperGrid import WolperGrid as WGAgent
+from WolperGrid_Config import WolperGrid_Config as WGAgentConf
 from l2rpn_baselines.utils.save_log_gif import save_log_gif
 from wg_util import limit_gpu_usage
 
@@ -17,14 +18,14 @@ DEFAULT_LOGS_DIR = "./logs-eval"
 DEFAULT_NB_EPISODE = 1
 DEFAULT_NB_PROCESS = 1
 DEFAULT_MAX_STEPS = -1
-DEFAULT_VERBOSE = False
+DEFAULT_VERBOSE = True
 
 def cli():
     parser = argparse.ArgumentParser(description="Eval baseline GridRDQN")
     parser.add_argument("--data_dir", required=True,
                         help="Path to the dataset root directory")
-    parser.add_argument("--load_file", required=True,
-                        help="The path to the model [.h5]")
+    parser.add_argument("--load_dir", required=True,
+                        help="The path to the actor/critic models")
     parser.add_argument("--logs_dir", required=False,
                         default=DEFAULT_LOGS_DIR, type=str,
                         help="Path to output logs directory") 
@@ -55,6 +56,8 @@ def evaluate(env,
     # Limit gpu usage
     limit_gpu_usage()
 
+    WGAgentConf.VERBOSE = verbose
+    WGAgentConf.K_RATIO = 0.05
     runner_params = env.get_params_for_runner()
     runner_params["verbose"] = verbose
 
@@ -75,7 +78,9 @@ def evaluate(env,
     # Print model summary
     if verbose:
         stringlist = []
-        agent.Qmain.model.summary(print_fn=lambda x: stringlist.append(x))
+        agent.Qmain.actor.summary(print_fn=lambda x: stringlist.append(x))
+        stringlist.append(" -- ")
+        agent.Qmain.critic.summary(print_fn=lambda x: stringlist.append(x))
         short_model_summary = "\n".join(stringlist)
         print(short_model_summary)
 
@@ -104,18 +109,29 @@ def evaluate(env,
 if __name__ == "__main__":
     # Parse command line
     args = cli()
+
+    # Try to use faster simulator
+    try:
+        from lightsim2grid.LightSimBackend import LightSimBackend
+        backend = LightSimBackend()
+    except:
+        print ("Fall back on default PandaPowerBackend")
+        from grid2op.Backend import PandaPowerBackend
+        backend = PandaPowerBackend()
+
     # Create dataset env
     env = make(args.data_dir,
-               reward_class=RedispReward,
+               backend=backend,
+               reward_class=L2RPNSandBoxScore,
                action_class=TopologyAction,
                other_rewards={
-                   "bridge": BridgeReward,
-                   "overflow": CloseToOverflowReward,
-                   "distance": DistanceReward
+                   "game": GameplayReward,
+                   "l2rpn": L2RPNReward,
+                   "overflow": CloseToOverflowReward
                })
     # Call evaluation interface
     evaluate(env,
-             load_path=args.load_file,
+             load_path=args.load_dir,
              logs_path=args.logs_dir,
              nb_episode=args.nb_episode,
              nb_process=args.nb_process,

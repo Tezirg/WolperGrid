@@ -21,7 +21,8 @@ rm -rf ./logs-train/$WG_NAME
 
 rm -rf ./logs-eval/$WG_NAME
 ./evaluate.py \
+    --verbose \
     --data_dir $WG_DATA \
-    --load_file ./models/$WG_NAME.tf \
+    --load_dir ./models/$WG_NAME/ \
     --logs_dir ./logs-eval/$WG_NAME \
     --nb_episode 10

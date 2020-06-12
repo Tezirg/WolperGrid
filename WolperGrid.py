@@ -121,12 +121,10 @@ class WolperGrid(AgentWithConverter):
     def reset(self, observation):
         self._reset_state(observation)
 
-    def my_act(self, observation, reward, done=False):
-        self.obs = observation
-        state = self.convert_obs(observation)
-        act_idx = self.Qmain.predict_move(state)
+    def my_act(self, state, reward, done=False):
+        act_idx = self.predict_move(state)
 
-        return self.convert_act(act_idx)
+        return act_idx
 
     def load(self, path):
         self.Qmain.load_network(path)
@@ -414,7 +412,7 @@ class WolperGrid(AgentWithConverter):
             # Gradient clip if needed
             #dqda = tf.clip_by_norm(dqda, 1.0, axes=-1)
             #dqda = tf.clip_by_value(dqda, -1.0, 1.0)
-            target_a = dqda + dpg_t_a
+            target_a = dqda + t_a
             target_a = tf.stop_gradient(target_a)
             loss_actor = 0.5 * tf.reduce_sum(tf.square(target_a - dpg_t_a),
                                              axis=-1)
