@@ -148,14 +148,3 @@ def disp_act_to_nn(obs, act_redispatch):
         netdisp[i] = r
 
     return netdisp
-    
-def wg_convert_act(action_space, obs, netbus, netline, netdisp):
-    act_setbus = netbus_to_act_setbus(obs, netbus)
-    act_setstatus = netline_to_act_setstatus(obs, netline)
-    act_redispatch = netdisp_to_act_redispatch(obs, netdisp)
-    act = action_space({
-        'set_bus': act_setbus,
-        'set_line_status': act_setstatus,
-        'redispatch': act_redispatch
-    })
-    return act

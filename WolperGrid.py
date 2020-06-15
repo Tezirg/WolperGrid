@@ -61,7 +61,6 @@ class WolperGrid(AgentWithConverter):
         self.epsilon = cfg.INITIAL_EPSILON
         self.loss_actor = 42.0
         self.loss_critic = 42.0
-        self.do_nothing_act = self.action_space({})
         self.Qtarget = WolperGrid_NN(self.observation_space,
                                      self.action_space,
                                      k_ratio = cfg.K_RATIO,
@@ -197,7 +196,7 @@ class WolperGrid(AgentWithConverter):
                 episode_illegal += 1
             if info["is_ambiguous"]:
                 episode_ambiguous += 1
-            if act == self.do_nothing_act:
+            if pred == 0:
                 episode_do_nothing += 1
             t += 1
             self.steps += 1
@@ -362,6 +361,13 @@ class WolperGrid(AgentWithConverter):
                 if r_test > r and d_test is False:
                     r = r_test
                     k_index = k_idx
+
+            if cfg.SIMULATE_DO_NOTHING:
+                # Test against do nothing as well
+                act = self.convert_act(0)
+                _, r_test, d_test, i_test = self.obs.simulate(act)
+                if r_test > r and d_test is False:
+                    return 0
         else:
             # Get index of highest critic q value
             k_index = np.argmax(Q)

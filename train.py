@@ -68,6 +68,8 @@ def train(env,
     WGConfig.INITIAL_EPSILON = 1.0
     WGConfig.FINAL_EPSILON = 0.01
     WGConfig.K_RATIO = 0.05
+    WGConfig.SIMULATE = 4
+    WGConfig.SIMULATE_DO_NOTHING = False
 
     # Limit gpu usage
     limit_gpu_usage()
