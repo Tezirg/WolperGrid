@@ -58,6 +58,9 @@ def evaluate(env,
 
     WGAgentConf.VERBOSE = verbose
     WGAgentConf.K_RATIO = 0.05
+    WGAgentConf.SIMULATE = -1
+    WGAgentConf.SIMULATE_DO_NOTHING = False
+
     runner_params = env.get_params_for_runner()
     runner_params["verbose"] = verbose
 
@@ -127,7 +130,8 @@ if __name__ == "__main__":
                other_rewards={
                    "game": GameplayReward,
                    "l2rpn": L2RPNReward,
-                   "overflow": CloseToOverflowReward
+                   "overflow": CloseToOverflowReward,
+                   "wcci_score": L2RPNSandBoxScore
                })
     # Call evaluation interface
     evaluate(env,
