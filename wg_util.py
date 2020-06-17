@@ -23,8 +23,8 @@ def wg_size_obs(observation_space):
     dims = np.array([
         # Time
         5, # Timestamp
-        3 * observation_space.n_line,
-        observation_space.n_sub,
+        4 * observation_space.n_line, # lines cd
+        observation_space.n_sub, # Sub cd
         # Gen
         observation_space.n_gen * 6,
         # Load
@@ -58,6 +58,7 @@ def wg_convert_obs(obs, bias=0.0):
                                 pad_v=-1.0, scale_v=20.0)
     time_line_nm = to_norm_vect(obs.time_next_maintenance, scale_v=12.0*31.0*24.0)
     time_line_dm = to_norm_vect(obs.duration_next_maintenance, scale_v=3*12.0*24.0)
+    time_line_overflow = to_norm_vect(obs.timestep_overflow, scale_v=2.0)
     time_sub_cd = to_norm_vect(obs.time_before_cooldown_sub,
                                pad_v=-1.0, scale_v=20.0)
     
@@ -113,7 +114,9 @@ def wg_convert_obs(obs, bias=0.0):
     res = np.concatenate([
         # Time
         time_v,
-        time_line_cd, time_line_nm, time_line_dm,
+        time_line_cd,
+        time_line_nm, time_line_dm,
+        time_line_overflow,
         time_sub_cd,
         # Gens
         g_p, g_q, g_v, g_ar, g_tr, g_bus,
