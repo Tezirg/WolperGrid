@@ -151,3 +151,65 @@ def disp_act_to_nn(obs, act_redispatch):
         netdisp[i] = r
 
     return netdisp
+
+def unitary_acts_to_impact_tree(action_space):
+    tree = [
+        [ [] for _ in range(action_space.n_line)],
+        [ [] for _ in range(action_space.n_sub)],
+        [ [] for _ in range(action_space.n_gen)]
+    ]
+    # Process impact for each actions
+    # Skip do nothing at 0
+    for act_id, a in enumerate(action_space.all_actions[1:]):
+        impact = a.impact_on_objects()
+
+        # Find category & index
+        ## Lines set
+        if np.any(a._set_line_status != 0):
+            c = 0
+            i = np.where(a._set_line_status != 0)[0][0]
+        ## Lines change
+        elif np.any(a._switch_line_status == True):
+            c = 0
+            i = np.where(a._switch_line_status == True)[0][0]
+        ## Topo set
+        elif np.any(a._set_topo_vect != 0):
+            c = 1
+            obj = np.where(a._set_topo_vect != 0)[0][0]
+            _, _, i = a._obj_caract_from_topo_id(obj)
+        ## Topo change
+        elif np.any(a._change_bus_vect):
+            c = 1
+            obj = np.where(a._change_bus_vect == True)[0][0]
+            _, _, i = a._obj_caract_from_topo_id(obj)
+        ## Gen redispatch
+        elif np.any(a._redispatch != 0.0):
+            c = 2
+            i = np.where(a._redispatch != 0.0)[0][0]
+
+        # Register id into tree
+        tree[c][i].append(act_id + 1)
+
+    # Add do nothing in each category
+    #for i in range(3):
+    #    tree[i].append([0,0])
+    return tree
+
+def print_impact_tree(tree):
+    print("Lines impact:")
+    for l_id, l_acts in enumerate(tree[0]):
+        print("Line {}: {} actions".format(l_id, len(l_acts)))
+    print("Subs impact:")
+    for s_id, s_acts in enumerate(tree[1]):
+        print("Sub {}: {} actions".format(s_id, len(s_acts)))
+    print("Gens impact:")
+    for g_id, g_acts in enumerate(tree[2]):
+        print("Gen {}: {} actions".format(g_id, len(g_acts)))
+
+def draw_from_tree(tree, category_prob):
+    c = np.random.choice(3, p=category_prob)
+    i = np.random.choice(len(tree[c]))
+    while len(tree[c][i]) == 0:
+        i = np.random.choice(len(tree[c]))
+    a = np.random.choice(len(tree[c][i]))
+    return tree[c][i][a]

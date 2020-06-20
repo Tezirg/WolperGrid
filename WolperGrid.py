@@ -72,6 +72,10 @@ class WolperGrid(AgentWithConverter):
         WolperGrid_NN.update_target_hard(self.Qmain.critic,
                                          self.Qtarget.critic)
 
+        self.impact_tree = None
+        if cfg.UNIFORM_EPSILON:
+            self.impact_tree = unitary_acts_to_impact_tree(self.action_space)
+
     def _reset_state(self, current_obs):
         # Initial state
         self.obs = current_obs
@@ -378,6 +382,8 @@ class WolperGrid(AgentWithConverter):
         return act_index
 
     def random_move(self, data):
+        if self.impact_tree is not None:
+            return draw_from_tree(self.impact_tree, [1.0/3.0,1.0/3.0,1.0/3.0])
         # Random action index
         return np.random.randint(self.action_space.n)
     
@@ -418,7 +424,7 @@ class WolperGrid(AgentWithConverter):
             # Gradient clip if needed
             #dqda = tf.clip_by_norm(dqda, 1.0, axes=-1)
             #dqda = tf.clip_by_value(dqda, -1.0, 1.0)
-            target_a = dqda + t_a
+            target_a = dqda + dpg_t_a
             target_a = tf.stop_gradient(target_a)
             loss_actor = 0.5 * tf.reduce_sum(tf.square(target_a - dpg_t_a),
                                              axis=-1)

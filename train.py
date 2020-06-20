@@ -66,9 +66,13 @@ def train(env,
     WGConfig.BATCH_SIZE = batch_size
     WGConfig.VERBOSE = verbose
     WGConfig.INITIAL_EPSILON = 1.0
-    WGConfig.FINAL_EPSILON = 0.01
-    WGConfig.K_RATIO = 0.05
-    WGConfig.SIMULATE = 4
+    WGConfig.FINAL_EPSILON = 0.001
+    WGConfig.DECAY_EPSILON = 2000
+    WGConfig.STEP_EPSILON = (1.0-0.001)/2000
+    WGConfig.UNIFORM_EPSILON = True
+    WGConfig.K_RATIO = 256.0/134163.0
+    WGConfig.UPDATE_FREQ = 64
+    WGConfig.SIMULATE = 8
     WGConfig.SIMULATE_DO_NOTHING = False
 
     # Limit gpu usage
