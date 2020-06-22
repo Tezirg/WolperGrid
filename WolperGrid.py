@@ -311,7 +311,7 @@ class WolperGrid(AgentWithConverter):
             tf.summary.scalar("loss_actor", self.loss_actor, step)
             tf.summary.scalar("loss_critic", self.loss_critic, step)
 
-    def predict_k(self, data_input, proto):
+    def predict_k(self, data_input, proto, use_target=False):
         # Get k actions
         k_acts = self.Qmain.search_flann(proto)
 
@@ -332,19 +332,25 @@ class WolperGrid(AgentWithConverter):
             act_batch_li = [self.Qmain.act_vects[a] for a in act_idx_batch]
             act_batch = np.array(act_batch_li)
             input_batch = [k_batch_data, act_batch]
-            Q_batch = self.Qmain.critic.predict(input_batch)
+            if use_target:
+                Q_batch = self.Qtarget.critic.predict(input_batch)
+            else:
+                Q_batch = self.Qmain.critic.predict(input_batch)
             Q_batch = Q_batch.reshape(a_e - a_s)
             Q[a_s:a_e] = Q_batch[:]
 
         return k_acts[0], Q
 
-    def predict_move(self, data):
+    def predict_move(self, data, use_target=False):
         input_shape = (1, self.observation_size)
         data_input = data.reshape(input_shape)
         actor_input = [data_input]
-        proto = self.Qmain.actor.predict(actor_input,batch_size=1)
+        if use_target:
+            proto = self.Qtarget.actor.predict(actor_input,batch_size=1)
+        else:
+            proto = self.Qmain.actor.predict(actor_input,batch_size=1)
 
-        k_acts, Q = self.predict_k(data_input, proto)
+        k_acts, Q = self.predict_k(data_input, proto, use_target)
         k_index = 0
         if cfg.SIMULATE > 0:
             # Simulate top critic [cfg.SIMULATE] Q values
@@ -381,7 +387,7 @@ class WolperGrid(AgentWithConverter):
         return np.random.randint(self.action_space.n)
     
     def _ddpg_train(self, batch, step):
-        grad_clip = 40.0
+        grad_clip = 1.0
         input_shape = (self.batch_size,
                        self.observation_size)
         # S(t)
@@ -395,7 +401,7 @@ class WolperGrid(AgentWithConverter):
         t1_a = []
         for i in range(self.batch_size):
             data = np.array(batch[4][i])
-            a = self.predict_move(data)
+            a = self.predict_move(data, use_target=True)
             t1_a.append(self.Qmain.act_vects[a])
         t1_a = np.array(t1_a)
 
@@ -424,7 +430,7 @@ class WolperGrid(AgentWithConverter):
             dqda = tape.gradient([dpg_t_q], [dpg_t_a])[0]
             # Gradient clip if needed
             #dqda = tf.clip_by_norm(dqda, 1.0, axes=-1)
-            dqda = tf.clip_by_value(dqda, -1.0, 1.0)
+            #dqda = tf.clip_by_value(dqda, -1.0, 1.0)
             target_a = dqda + dpg_t_a
             target_a = tf.stop_gradient(target_a)
             loss_actor = 0.5 * tf.reduce_sum(tf.square(target_a - dpg_t_a),

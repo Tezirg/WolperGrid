@@ -66,11 +66,11 @@ def train(env,
     WGConfig.BATCH_SIZE = batch_size
     WGConfig.VERBOSE = verbose
     WGConfig.INITIAL_EPSILON = 1.0
-    WGConfig.FINAL_EPSILON = 0.003
+    WGConfig.FINAL_EPSILON = 0.01
     WGConfig.DECAY_EPSILON = 1000
     WGConfig.UNIFORM_EPSILON = True
     WGConfig.K_RATIO = 256.0/134163.0
-    WGConfig.UPDATE_FREQ = 4
+    WGConfig.UPDATE_FREQ = 16
     WGConfig.SIMULATE = -1
     WGConfig.SIMULATE_DO_NOTHING = False
 
