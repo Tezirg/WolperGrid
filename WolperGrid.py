@@ -392,16 +392,11 @@ class WolperGrid(AgentWithConverter):
         # S(t+1)
         t1_data = np.vstack(batch[4])
         t1_data = t1_data.reshape(input_shape)
-        t1_p = self.Qtarget.actor([t1_data]).numpy()
         t1_a = []
         for i in range(self.batch_size):
-            input_shape = (1, self.observation_size)
             data = np.array(batch[4][i])
-            data_input = data.reshape(input_shape)
-            k_acts, pQ = self.predict_k(data_input, t1_p[i])
-            k_idx = np.argmax(pQ)
-            a = self.Qmain.act_vects[k_acts[k_idx]]
-            t1_a.append(a)
+            a = self.predict_move(data)
+            t1_a.append(self.Qmain.act_vects[a])
         t1_a = np.array(t1_a)
 
         # Perform DDPG update as per DeepMind implementation:
@@ -429,7 +424,7 @@ class WolperGrid(AgentWithConverter):
             dqda = tape.gradient([dpg_t_q], [dpg_t_a])[0]
             # Gradient clip if needed
             #dqda = tf.clip_by_norm(dqda, 1.0, axes=-1)
-            #dqda = tf.clip_by_value(dqda, -1.0, 1.0)
+            dqda = tf.clip_by_value(dqda, -1.0, 1.0)
             target_a = dqda + dpg_t_a
             target_a = tf.stop_gradient(target_a)
             loss_actor = 0.5 * tf.reduce_sum(tf.square(target_a - dpg_t_a),
