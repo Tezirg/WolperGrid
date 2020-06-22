@@ -57,8 +57,9 @@ class WolperGrid(AgentWithConverter):
         self.epoch_illegal = []
         self.epoch_ambiguous = []
         self.epoch_do_nothing = []
-        self.episode_exp = []
         self.epsilon = cfg.INITIAL_EPSILON
+        self.step_epsilon = (cfg.INITIAL_EPSILON - cfg.FINAL_EPSILON)
+        self.step_epsilon /= cfg.DECAY_EPSILON
         self.loss_actor = 42.0
         self.loss_critic = 42.0
         self.Qtarget = WolperGrid_NN(self.observation_space,
@@ -81,15 +82,6 @@ class WolperGrid(AgentWithConverter):
         self.obs = current_obs
         self.state = self.convert_obs(self.obs)
         self.done = False
-
-    def _register_experience(self, episode_exp):
-        for exp in episode_exp:
-            s = exp[0]
-            a = exp[1]
-            r = exp[2]
-            d = exp[3]
-            s2 = exp[4]
-            self.exp_buffer.add(s, a, r, d, s2)
 
     def _save_hyperparameters(self, logpath, env, iters):
         r_instance = env.reward_helper.template_reward
@@ -164,9 +156,9 @@ class WolperGrid(AgentWithConverter):
             # Convert observation
             new_state = self.convert_obs(new_obs)
 
-            # Save to current episode experience
-            self.episode_exp.append((self.state, pred,
-                                     reward, self.done, new_state))
+            # Save to exp buffer
+            self.exp_buffer.add(self.state, pred,
+                                reward, self.done, new_state)
 
             # Minibatch train
             if self.exp_buffer.size() >= self.batch_size and \
@@ -253,16 +245,13 @@ class WolperGrid(AgentWithConverter):
 
             # Enter episode
             self.train_episode(m, env)
-            
-            # Push last episode experience to experience buffer
-            self._register_experience(self.episode_exp)
-            self.episode_exp = []
 
             # Slowly decay e-greedy rate
             if self.epsilon > cfg.FINAL_EPSILON:
-                self.epsilon -= cfg.STEP_EPSILON
-            if self.epsilon < cfg.FINAL_EPSILON:
-                self.epsilon = cfg.FINAL_EPSILON
+                self.epsilon -= self.step_epsilon
+                # Last decay may overshoot
+                if self.epsilon < cfg.FINAL_EPSILON:
+                    self.epsilon = cfg.FINAL_EPSILON
 
             # Save the network every 100 episodes
             if m > 0 and m % cfg.SAVE_FREQ == 0:
@@ -322,19 +311,14 @@ class WolperGrid(AgentWithConverter):
             tf.summary.scalar("loss_actor", self.loss_actor, step)
             tf.summary.scalar("loss_critic", self.loss_critic, step)
 
-    def predict_move(self, data):
-        input_shape = (1, self.observation_size)
-        data_input = data.reshape(input_shape)
-        actor_input = [data_input]
-        proto = self.Qmain.actor.predict(actor_input,batch_size=1)
-
+    def predict_k(self, data_input, proto):
         # Get k actions
         k_acts = self.Qmain.search_flann(proto)
 
         # Get Q values
         Q = np.zeros(self.Qmain.k)
         # By chunks
-        k_batch = 756
+        k_batch = 512
         k_rest = self.Qmain.k % k_batch
         k_batch_data = np.repeat(data_input, k_batch, axis=0)
         for i in range (0, self.Qmain.k, k_batch):
@@ -352,6 +336,15 @@ class WolperGrid(AgentWithConverter):
             Q_batch = Q_batch.reshape(a_e - a_s)
             Q[a_s:a_e] = Q_batch[:]
 
+        return k_acts[0], Q
+
+    def predict_move(self, data):
+        input_shape = (1, self.observation_size)
+        data_input = data.reshape(input_shape)
+        actor_input = [data_input]
+        proto = self.Qmain.actor.predict(actor_input,batch_size=1)
+
+        k_acts, Q = self.predict_k(data_input, proto)
         k_index = 0
         if cfg.SIMULATE > 0:
             # Simulate top critic [cfg.SIMULATE] Q values
@@ -359,7 +352,7 @@ class WolperGrid(AgentWithConverter):
             r = float('-inf')
             k_indexes = np.argpartition(Q, -cfg.SIMULATE)[-cfg.SIMULATE:]
             for k_idx in k_indexes:
-                act_idx = k_acts[0][k_idx]
+                act_idx = k_acts[k_idx]
                 act = self.convert_act(act_idx)
                 _, r_test, d_test, i_test = self.obs.simulate(act)
                 if r_test > r and d_test is False:
@@ -377,7 +370,7 @@ class WolperGrid(AgentWithConverter):
             k_index = np.argmax(Q)
 
         # Get action index
-        act_index = k_acts[0][k_index]
+        act_index = k_acts[k_index]
 
         return act_index
 
@@ -391,17 +384,30 @@ class WolperGrid(AgentWithConverter):
         grad_clip = 40.0
         input_shape = (self.batch_size,
                        self.observation_size)
+        # S(t)
         t_data = np.vstack(batch[0])
         t_data = t_data.reshape(input_shape)
         t_a = np.array([self.Qmain.act_vects[a] for a in batch[1]])
+
+        # S(t+1)
         t1_data = np.vstack(batch[4])
         t1_data = t1_data.reshape(input_shape)
+        t1_p = self.Qtarget.actor([t1_data]).numpy()
+        t1_a = []
+        for i in range(self.batch_size):
+            input_shape = (1, self.observation_size)
+            data = np.array(batch[4][i])
+            data_input = data.reshape(input_shape)
+            k_acts, pQ = self.predict_k(data_input, t1_p[i])
+            k_idx = np.argmax(pQ)
+            a = self.Qmain.act_vects[k_acts[k_idx]]
+            t1_a.append(a)
+        t1_a = np.array(t1_a)
 
         # Perform DDPG update as per DeepMind implementation:
         # github.com/deepmind/acme/blob/master/acme/agents/ddpg/learning.py
         with tf.GradientTape(persistent=True) as tape:
             t_Q = self.Qmain.critic([t_data, t_a])
-            t1_a = self.Qtarget.actor([t1_data])
             t1_Q = self.Qtarget.critic([t1_data, t1_a])
 
             # Flatten to [batch_size]
