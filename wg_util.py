@@ -161,8 +161,6 @@ def unitary_acts_to_impact_tree(action_space):
     # Process impact for each actions
     # Skip do nothing at 0
     for act_id, a in enumerate(action_space.all_actions[1:]):
-        impact = a.impact_on_objects()
-
         # Find category & index
         ## Lines set
         if np.any(a._set_line_status != 0):
