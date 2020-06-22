@@ -8,11 +8,12 @@ class WolperGrid_Config():
     UNIFORM_EPSILON = False
     DISCOUNT_FACTOR = 0.99
     REPLAY_BUFFER_SIZE = 1024*32
+    LOG_FREQ = 500
     UPDATE_FREQ = 96
     UPDATE_TARGET_HARD_FREQ = -1
     UPDATE_TARGET_SOFT_TAU = 1e-5
     INPUT_BIAS = 0.0
-    SAVE_FREQ = 16
+    SAVE_FREQ = 100
     K_RATIO = 0.1
     BATCH_SIZE = 32
     LR = 1e-4
@@ -26,16 +27,16 @@ class WolperGrid_Config():
             conf_json = json.load(fp)
         
         for k,v in conf_json.items():
-            if hasattr(DoubleDuelingDQNConfig, k):
-                setattr(DoubleDuelingDQNConfig, k, v)
+            if hasattr(WolperGrid_Config, k):
+                setattr(WolperGrid_Config, k, v)
 
     @staticmethod
     def to_json(json_out_path):
         conf_json = {}
-        for attr in dir(DoubleDuelingDQNConfig):
+        for attr in dir(WolperGrid_Config):
             if attr.startswith('__') or callable(attr):
                 continue
-            conf_json[attr] = getattr(DoubleDuelingDQNConfig, attr)
+            conf_json[attr] = getattr(WolperGrid_Config, attr)
 
         with open(json_out_path, 'w+') as fp:
             json.dump(fp, conf_json, indent=2)

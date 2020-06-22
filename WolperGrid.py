@@ -184,7 +184,7 @@ class WolperGrid(AgentWithConverter):
             # Log to tensorboard
             if self.steps > cfg.UPDATE_FREQ and \
                self.steps > 100 and \
-               self.steps % cfg.UPDATE_FREQ == 0:
+               self.steps % cfg.LOG_FREQ == 0:
                 self._tf_log_summary(self.steps)
 
             # Increment step
