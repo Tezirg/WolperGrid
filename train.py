@@ -93,10 +93,6 @@ def train(env,
 if __name__ == "__main__":
     args = cli()
 
-    # Set custom params
-    param = Parameters()
-    #param.NO_OVERFLOW_DISCONNECTION = True
-
     try:
         from lightsim2grid.LightSimBackend import LightSimBackend
         backend = LightSimBackend()
@@ -106,7 +102,7 @@ if __name__ == "__main__":
         backend = PandaPowerBackend()
 
     env = make(args.data_dir,
-               param=param,
+               difficulty="competition",
                backend=backend,
                action_class=TopologyAndDispatchAction,
                reward_class=CombinedScaledReward,
