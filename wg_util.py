@@ -145,10 +145,12 @@ def disp_act_to_nn(obs, act_redispatch):
     # [-ramp_down;+ramp_up] -> [-1.0;1.0]
     netdisp = np.zeros(obs.n_gen)
     # No redispatch, skip loop
-    if np.all(act_redispatch == 0):
+    if np.all(act_redispatch == 0.0):
         return netdisp
     # Rescale
     for i, d in enumerate(act_redispatch):
+        if obs.gen_redispatchable[i] == False:
+            continue
         rmin = obs.gen_max_ramp_down[i]
         rmax = obs.gen_max_ramp_up[i]
         r = np.interp(d, [-rmin, rmax], [-1.0, 1.0])
@@ -193,8 +195,8 @@ def unitary_acts_to_impact_tree(action_space):
         tree[c][i].append(act_id + 1)
 
     # Add do nothing in each category
-    #for i in range(3):
-    #    tree[i].append([0,0])
+    for i in range(3):
+        tree[i].append([0,0])
     return tree
 
 def print_impact_tree(tree):

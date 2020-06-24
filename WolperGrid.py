@@ -26,6 +26,7 @@ class WolperGrid(AgentWithConverter):
         self.observation_space = observation_space
         self.obs_space = observation_space
         self.observation_size = wg_size_obs(self.obs_space)
+        print("observation_size = ", self.observation_size)
         self.name = name
         self.batch_size = cfg.BATCH_SIZE
         self.is_training = is_training
@@ -378,13 +379,20 @@ class WolperGrid(AgentWithConverter):
         # Get action index
         act_index = k_acts[k_index]
 
+        if False and self.steps > 20000:
+            print("Action index = ", act_index)
+            print("Action vect = ", self.Qmain.act_vects[act_index])
+            print("Action str =", self.action_space.all_actions[act_index])
+            print("Action proto = ", proto)
         return act_index
 
     def random_move(self, data):
-        if self.impact_tree is not None:
+        if cfg.UNIFORM_EPSILON:
+            # Random impact
             return draw_from_tree(self.impact_tree, [1.0/3.0,1.0/3.0,1.0/3.0])
-        # Random action index
-        return np.random.randint(self.action_space.n)
+        else:
+            # Random action
+            return np.random.randint(self.action_space.n)
     
     def _ddpg_train(self, batch, step):
         grad_clip = 1.0
@@ -437,15 +445,15 @@ class WolperGrid(AgentWithConverter):
                                              axis=-1)
             loss_actor = tf.reduce_mean(loss_actor, axis=0)
 
-            # Gradients
-            actor_vars = self.Qmain.actor.trainable_variables
-            crit_vars = self.Qmain.critic.trainable_variables
+        # Gradients
+        actor_vars = self.Qmain.actor.trainable_variables
+        crit_vars = self.Qmain.critic.trainable_variables
 
-            actor_grads = tape.gradient(loss_actor, actor_vars)
-            crit_grads = tape.gradient(loss_critic, crit_vars)
+        actor_grads = tape.gradient(loss_actor, actor_vars)
+        crit_grads = tape.gradient(loss_critic, crit_vars)
 
-            # Delete the tape manually because of the persistent=True flag.
-            del tape
+        # Delete the tape manually because of the persistent=True flag.
+        del tape
 
         # Gradient clip if needed
         #actor_grads = tf.clip_by_global_norm(actor_grads, grad_clip)[0]
