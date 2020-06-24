@@ -99,8 +99,9 @@ class WolperGrid_NN(object):
         self.flann = pf.FLANN()
         self.flann.build_index(flann_pts,
                                algorithm="kmeans",
-                               iterations=16,
-                               cb_index=0.2,
+                               iterations=7,
+                               cb_index=0.5,
+                               centers_init="kmeanspp",
                                branching=32,
                                checks=16)
         print("..Done")
