@@ -353,7 +353,7 @@ class WolperGrid(AgentWithConverter):
 
         k_acts, Q = self.predict_k(data_input, proto, use_target)
         k_index = 0
-        if cfg.SIMULATE > 0:
+        if not use_target and cfg.SIMULATE > 0:
             # Simulate top critic [cfg.SIMULATE] Q values
             # Keep the index of the highest simulate result
             r = float('-inf')
@@ -379,23 +379,25 @@ class WolperGrid(AgentWithConverter):
         # Get action index
         act_index = k_acts[k_index]
 
-        if False and self.steps > 20000:
-            print("Action index = ", act_index)
-            print("Action vect = ", self.Qmain.act_vects[act_index])
-            print("Action str =", self.action_space.all_actions[act_index])
-            print("Action proto = ", proto)
+        #if self.steps > 50000:
+        #    print("----")
+        #    print("Action vect = ", self.Qmain.act_vects[act_index])
+        #    print("Action str =", self.convert_act(act_index))
+        #    print("Action proto = ", proto)
+        #    print("----")
         return act_index
 
     def random_move(self, data):
         if cfg.UNIFORM_EPSILON:
             # Random impact
-            return draw_from_tree(self.impact_tree, [1.0/3.0,1.0/3.0,1.0/3.0])
+            action_class_p = [1.0/3.0,1.0/3.0,1.0/3.0]
+            return draw_from_tree(self.impact_tree, action_class_p)
         else:
             # Random action
             return np.random.randint(self.action_space.n)
     
     def _ddpg_train(self, batch, step):
-        grad_clip = 1.0
+        grad_clip = 40.0
         input_shape = (self.batch_size,
                        self.observation_size)
         # S(t)
@@ -414,7 +416,7 @@ class WolperGrid(AgentWithConverter):
         t1_a = np.array(t1_a)
 
         # Perform DDPG update as per DeepMind implementation:
-        # github.com/deepmind/acme/blob/master/acme/agents/ddpg/learning.py
+        # github.com/deepmind/acme/blob/master/acme/agents/tf/ddpg/learning.py
         with tf.GradientTape(persistent=True) as tape:
             t_Q = self.Qmain.critic([t_data, t_a])
             t1_Q = self.Qtarget.critic([t1_data, t1_a])
@@ -434,11 +436,11 @@ class WolperGrid(AgentWithConverter):
             dpg_t_a = self.Qmain.actor([t_data])
             dpg_t_q = self.Qmain.critic([t_data, dpg_t_a])
             # DPG / gradient sample
-            # github.com/deepmind/acme/blob/master/acme/losses/dpg.py#L21
+            # github.com/deepmind/acme/blob/master/acme/tf/losses/dpg.py
             dqda = tape.gradient([dpg_t_q], [dpg_t_a])[0]
-            # Gradient clip if needed
-            #dqda = tf.clip_by_norm(dqda, 1.0, axes=-1)
-            #dqda = tf.clip_by_value(dqda, -1.0, 1.0)
+            # Gradient clip if enabled
+            if cfg.GRADIENT_CLIP:
+                dqda = tf.clip_by_norm(dqda, 1.0, axes=-1)
             target_a = dqda + dpg_t_a
             target_a = tf.stop_gradient(target_a)
             loss_actor = 0.5 * tf.reduce_sum(tf.square(target_a - dpg_t_a),
@@ -455,9 +457,10 @@ class WolperGrid(AgentWithConverter):
         # Delete the tape manually because of the persistent=True flag.
         del tape
 
-        # Gradient clip if needed
-        #actor_grads = tf.clip_by_global_norm(actor_grads, grad_clip)[0]
-        #crit_grads = tf.clip_by_global_norm(crit_grads, grad_clip)[0]
+        # Gradient clip if enabled
+        if cfg.GRADIENT_CLIP:
+            actor_grads = tf.clip_by_global_norm(actor_grads, grad_clip)[0]
+            crit_grads = tf.clip_by_global_norm(crit_grads, grad_clip)[0]
 
         self.Qmain.actor_opt.apply_gradients(zip(actor_grads, actor_vars))
         self.Qmain.critic_opt.apply_gradients(zip(crit_grads, crit_vars))
