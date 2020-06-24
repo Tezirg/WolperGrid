@@ -144,6 +144,10 @@ def disp_nn_to_act(obs, net_disp):
 def disp_act_to_nn(obs, act_redispatch):
     # [-ramp_down;+ramp_up] -> [-1.0;1.0]
     netdisp = np.zeros(obs.n_gen)
+    # No redispatch, skip loop
+    if np.all(act_redispatch == 0):
+        return netdisp
+    # Rescale
     for i, d in enumerate(act_redispatch):
         rmin = obs.gen_max_ramp_down[i]
         rmax = obs.gen_max_ramp_up[i]

@@ -75,6 +75,7 @@ class WolperGrid_NN(object):
             # Copy set bus
             bus_s_f = act._set_topo_vect.astype(np.float32)
             act_v[bus_s_offset[0]:bus_s_offset[1]] = bus_s_f
+            act_v[bus_s_offset[0]:bus_s_offset[1]][bus_s_f == 2.0] = -1.0
 
             # Copy change bus
             bus_c_f = act._change_bus_vect.astype(np.float32)
@@ -88,7 +89,9 @@ class WolperGrid_NN(object):
             self.act_vects.append(act_v)
             
         flann_pts = np.array(self.act_vects)
-        print("act_n {} -- k {}".format(self.act_n, self.k))
+        print("act_size {} -- act_n {} -- k {}".format(act_v_size,
+                                                       self.act_n,
+                                                       self.k))
         print("..Done")
 
         print("Flann build tree..")
@@ -96,6 +99,8 @@ class WolperGrid_NN(object):
         self.flann = pf.FLANN()
         self.flann.build_index(flann_pts,
                                algorithm="kmeans",
+                               iterations=16,
+                               cb_index=0.2,
                                branching=32,
                                checks=16)
         print("..Done")
