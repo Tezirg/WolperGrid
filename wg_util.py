@@ -55,12 +55,14 @@ def wg_convert_obs(obs, bias=0.0):
                obs.hour_of_day / 24.0, obs.minute_of_hour / 60.0]
     time_v = to_norm_vect(time_li)
     time_line_cd = to_norm_vect(obs.time_before_cooldown_line,
-                                pad_v=-1.0, scale_v=20.0)
-    time_line_nm = to_norm_vect(obs.time_next_maintenance, scale_v=12.0*31.0*24.0)
-    time_line_dm = to_norm_vect(obs.duration_next_maintenance, scale_v=3*12.0*24.0)
-    time_line_overflow = to_norm_vect(obs.timestep_overflow, scale_v=2.0)
+                                pad_v=0.0, scale_v=12.0)
+    time_line_nm = to_norm_vect(obs.time_next_maintenance,
+                                scale_v=12.0*31.0*24.0)
+    time_line_dm = to_norm_vect(obs.duration_next_maintenance,
+                                scale_v=3.0*12.0*24.0)
+    time_line_overflow = to_norm_vect(obs.timestep_overflow, scale_v=3.0)
     time_sub_cd = to_norm_vect(obs.time_before_cooldown_sub,
-                               pad_v=-1.0, scale_v=20.0)
+                               pad_v=0.0, scale_v=12.0)
     
     # Get generators info
     g_p = to_norm_vect(obs.prod_p, scale_v=1000.0)
@@ -68,13 +70,13 @@ def wg_convert_obs(obs, bias=0.0):
     g_v = to_norm_vect(obs.prod_v, scale_v=1000.0)
     g_tr = to_norm_vect(obs.target_dispatch, scale_v=1000.0)
     g_ar = to_norm_vect(obs.actual_dispatch, scale_v=1000.0)
-    g_cost = to_norm_vect(obs.gen_cost_per_MW, pad_v=0.0, scale_v=1.0)
+    g_cost = to_norm_vect(obs.gen_cost_per_MW, pad_v=0.0, scale_v=100.0)
     g_buses = np.zeros(obs.n_gen)
     for gen_id in range(obs.n_gen):
         g_buses[gen_id] = topo[g_pos[gen_id]] * 1.0
         if g_buses[gen_id] <= 0.0:
             g_buses[gen_id] = 0.0
-    g_bus = to_norm_vect(g_buses, pad_v=-1.0, scale_v=3.0)
+    g_bus = to_norm_vect(g_buses, pad_v=0.0, scale_v=2.0)
 
     # Get loads info
     l_p = to_norm_vect(obs.load_p, scale_v=1000.0)
@@ -85,7 +87,7 @@ def wg_convert_obs(obs, bias=0.0):
         l_buses[load_id] = topo[l_pos[load_id]] * 1.0
         if l_buses[load_id] <= 0.0:
             l_buses[load_id] = 0.0
-    l_bus = to_norm_vect(l_buses, pad_v=-1.0, scale_v=3.0)
+    l_bus = to_norm_vect(l_buses, pad_v=0.0, scale_v=2.0)
 
     # Get lines origin info
     or_p = to_norm_vect(obs.p_or, scale_v=1000.0)
@@ -96,8 +98,8 @@ def wg_convert_obs(obs, bias=0.0):
         or_buses[line_id] = topo[lor_pos[line_id]] * 1.0
         if or_buses[line_id] <= 0.0:
             or_buses[line_id] = 0.0
-    or_bus = to_norm_vect(or_buses, pad_v=-1.0, scale_v=3.0)
-    or_rho = to_norm_vect(obs.rho, pad_v=-1.0)
+    or_bus = to_norm_vect(or_buses, pad_v=0.0, scale_v=2.0)
+    or_rho = to_norm_vect(obs.rho, pad_v=0.0, scale_v=2.0)
     
     # Get extremities origin info
     ex_p = to_norm_vect(obs.p_ex, scale_v=1000.0)
@@ -108,8 +110,8 @@ def wg_convert_obs(obs, bias=0.0):
         ex_buses[line_id] = topo[lex_pos[line_id]] * 1.0
         if ex_buses[line_id] <= 0.0:
             ex_buses[line_id] = 0.0
-    ex_bus = to_norm_vect(ex_buses, pad_v=-1.0, scale_v=3.0)
-    ex_rho = to_norm_vect(obs.rho, pad_v=-1.0)
+    ex_bus = to_norm_vect(ex_buses, pad_v=0.0, scale_v=2.0)
+    ex_rho = to_norm_vect(obs.rho, pad_v=0.0, scale_v=2.0)
 
     res = np.concatenate([
         # Time
@@ -133,6 +135,8 @@ def disp_nn_to_act(obs, net_disp):
     # [-1.0;1.0] -> [-ramp_down;+ramp_up]
     act_redispatch = np.zeros(obs.n_gen)
     for i, d in enumerate(net_disp):
+        if obs.gen_redispatchable[i] == False:
+            continue
         if math.isclose(d, 0.0): # Skip if 0.0
             continue
         rmin = obs.gen_max_ramp_down[i]
