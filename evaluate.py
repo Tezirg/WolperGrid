@@ -57,7 +57,7 @@ def evaluate(env,
     limit_gpu_usage()
 
     WGAgentConf.VERBOSE = verbose
-    WGAgentConf.K_RATIO = 256.0/134163.0
+    WGAgentConf.K = 256
     WGAgentConf.SIMULATE = -1
     WGAgentConf.SIMULATE_DO_NOTHING = False
 

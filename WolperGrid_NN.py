@@ -187,6 +187,7 @@ class WolperGrid_NN(object):
         h3 = self.forward_vec(h2, self.act_h, "actor_encode2")
         h4 = tf.nn.tanh(h3, name="actor_tanh2")
         proto = self.forward_vec(h4, self.proto_size, "actor_proto1")
+        proto = tf.nn.tanh(proto, name="actor_proto_tanh")
         
         # Backwards pass
         actor_inputs = [ input_obs ]
@@ -252,7 +253,7 @@ class WolperGrid_NN(object):
         actor_path = os.path.join(path, "actor.tf")
         critic_path = os.path.join(path, "critic.tf")
 
-        self.obs.load_weights(actor_path)
+        self.obs.load_weights(obs_path)
         self.actor.load_weights(actor_path)
         self.critic.load_weights(critic_path)
         print("Succesfully loaded network from: {}".format(path))
