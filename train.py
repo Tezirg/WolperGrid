@@ -70,10 +70,11 @@ def train(env,
     WGConfig.FINAL_EPSILON = 0.01
     WGConfig.DECAY_EPSILON = 2000
     WGConfig.UNIFORM_EPSILON = True
-    WGConfig.K_RATIO = 256.0/134163.0
-    WGConfig.UPDATE_FREQ = 16
+    WGConfig.K = 256
+    WGConfig.UPDATE_FREQ = 128
     WGConfig.SIMULATE = -1
     WGConfig.SIMULATE_DO_NOTHING = False
+    WGConfig.DISCOUNT_FACTOR = 0.99
 
     # Limit gpu usage
     limit_gpu_usage()
@@ -126,8 +127,8 @@ if __name__ == "__main__":
     cr.addReward("game", GameplayReward(), 2.0)
     #cr.addReward("eco", EconomicReward(), 2.0)
     cr.addReward("reco", LinesReconnectedReward(), 1.0)
-    cr.addReward("l2rpn", L2RPNReward(), 1.0 / env.n_line)
-    cr.set_range(0.0, 1.0)
+    cr.addReward("l2rpn", L2RPNReward(), 2.0 / env.n_line)
+    cr.set_range(-1.0, 1.0)
     # Initialize custom rewards
     cr.initialize(env)
 

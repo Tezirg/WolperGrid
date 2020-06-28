@@ -3,12 +3,14 @@ import json
 import copy
 import numpy as np
 import tensorflow as tf
+import tree
 
 from grid2op.Agent import AgentWithConverter
 from grid2op.Converter import IdToAct
 
 from ReplayBuffer import ReplayBuffer
 from WolperGrid_Config import WolperGrid_Config as cfg
+from WolperGrid_Flann import WolperGrid_Flann
 from WolperGrid_NN import WolperGrid_NN
 from wg_util import *
 
@@ -40,10 +42,12 @@ class WolperGrid(AgentWithConverter):
         # Load network graph
         self.Qmain = WolperGrid_NN(self.observation_space,
                                    self.action_space,
-                                   k_ratio = cfg.K_RATIO,
                                    learning_rate = cfg.LR,
                                    is_training = self.is_training)
 
+        # Create G(x)
+        self.flann = WolperGrid_Flann(self.action_space)
+        
         # Setup training vars if needed
         if self.is_training:
             self._init_training()
@@ -65,10 +69,10 @@ class WolperGrid(AgentWithConverter):
         self.loss_critic = 42.0
         self.Qtarget = WolperGrid_NN(self.observation_space,
                                      self.action_space,
-                                     k_ratio = cfg.K_RATIO,
                                      learning_rate = self.lr,
-                                     is_training = self.is_training,
-                                     is_target = True)
+                                     is_training = self.is_training)
+        WolperGrid_NN.update_target_hard(self.Qmain.obs,
+                                         self.Qtarget.obs)
         WolperGrid_NN.update_target_hard(self.Qmain.actor,
                                          self.Qtarget.actor)
         WolperGrid_NN.update_target_hard(self.Qmain.critic,
@@ -99,7 +103,7 @@ class WolperGrid(AgentWithConverter):
             "update_soft": cfg.UPDATE_TARGET_SOFT_TAU,
             "save_freq": cfg.SAVE_FREQ,
             "input_bias": cfg.INPUT_BIAS,
-            "k": cfg.K_RATIO,
+            "k": cfg.K,
             "reward": dict(r_instance)
         }
         hp_filename = "{}-hypers.json".format(self.name)
@@ -171,6 +175,8 @@ class WolperGrid(AgentWithConverter):
                 # Update target network towards primary network
                 if cfg.UPDATE_TARGET_SOFT_TAU > 0:
                     tau = cfg.UPDATE_TARGET_SOFT_TAU
+                    WolperGrid_NN.update_target_soft(self.Qmain.obs,
+                                                     self.Qtarget.obs, tau)
                     WolperGrid_NN.update_target_soft(self.Qmain.actor,
                                                      self.Qtarget.actor, tau)
                     WolperGrid_NN.update_target_soft(self.Qmain.critic,
@@ -178,6 +184,8 @@ class WolperGrid(AgentWithConverter):
                 # Update target completely
                 if cfg.UPDATE_TARGET_HARD_FREQ > 0 and \
                    (t % cfg.UPDATE_TARGET_HARD_FREQ) == 0:
+                    WolperGrid_NN.update_target_hard(self.Qmain.obs,
+                                                     self.Qtarget.obs)
                     WolperGrid_NN.update_target_hard(self.Qmain.actor,
                                                      self.Qtarget.actor)
                     WolperGrid_NN.update_target_hard(self.Qmain.critic,
@@ -211,12 +219,12 @@ class WolperGrid(AgentWithConverter):
             done_episode_msg = "Episode [{:04d}] -- Steps [{}] -- Reward [{}]"
             print(done_episode_msg.format(m, t, total_reward))
         # Ensure arrays dont grow too much
-        if len(self.epoch_rewards) > 1000:
-            self.epoch_rewards = self.epoch_rewards[-1000:]
-            self.epoch_alive = self.epoch_alive[-1000:]
-            self.epoch_illegal = self.epoch_illegal[-1000:]
-            self.epoch_ambiguous = self.epoch_ambiguous[-1000:]
-            self.epoch_do_nothing = self.epoch_do_nothing[-1000:]
+        if len(self.epoch_rewards) > 2048:
+            self.epoch_rewards = self.epoch_rewards[-2048:]
+            self.epoch_alive = self.epoch_alive[-2048:]
+            self.epoch_illegal = self.epoch_illegal[-2048:]
+            self.epoch_ambiguous = self.epoch_ambiguous[-2048:]
+            self.epoch_do_nothing = self.epoch_do_nothing[-2048:]
 
     ## Training Procedure
     def train(self, env,
@@ -312,31 +320,31 @@ class WolperGrid(AgentWithConverter):
             tf.summary.scalar("loss_actor", self.loss_actor, step)
             tf.summary.scalar("loss_critic", self.loss_critic, step)
 
-    def predict_k(self, data_input, proto, use_target=False):
+    def predict_k(self, obs_input, proto, use_target=False):
         # Get k actions
-        k_acts = self.Qmain.search_flann(proto)
+        k_acts = self.flann.search_flann(proto, cfg.K)
 
         # Get Q values
-        Q = np.zeros(self.Qmain.k)
+        Q = np.zeros(cfg.K)
         # By chunks
         k_batch = 512
-        k_rest = self.Qmain.k % k_batch
-        k_batch_data = np.repeat(data_input, k_batch, axis=0)
-        for i in range (0, self.Qmain.k, k_batch):
+        k_rest = cfg.K % k_batch
+        k_batch_data = np.repeat(obs_input, k_batch, axis=0)
+        for i in range (0, cfg.K, k_batch):
             a_s = i
             a_e = i + k_batch
-            if a_e >= self.Qmain.k:
+            if a_e > cfg.K:
                 a_e = i + k_rest
                 k_batch_data = k_batch_data[:k_rest]
 
             act_idx_batch = k_acts[0][a_s:a_e]
-            act_batch_li = [self.Qmain.act_vects[a] for a in act_idx_batch]
+            act_batch_li = [self.flann[a] for a in act_idx_batch]
             act_batch = np.array(act_batch_li)
             input_batch = [k_batch_data, act_batch]
             if use_target:
-                Q_batch = self.Qtarget.critic.predict(input_batch)
+                Q_batch = self.Qtarget.critic(input_batch).numpy()
             else:
-                Q_batch = self.Qmain.critic.predict(input_batch)
+                Q_batch = self.Qmain.critic(input_batch).numpy()
             Q_batch = Q_batch.reshape(a_e - a_s)
             Q[a_s:a_e] = Q_batch[:]
 
@@ -345,13 +353,15 @@ class WolperGrid(AgentWithConverter):
     def predict_move(self, data, use_target=False):
         input_shape = (1, self.observation_size)
         data_input = data.reshape(input_shape)
-        actor_input = [data_input]
+        obs_input = [data_input]
         if use_target:
-            proto = self.Qtarget.actor.predict(actor_input,batch_size=1)
+            obs = self.Qtarget.obs(obs_input)
+            proto = self.Qtarget.actor(obs)
         else:
-            proto = self.Qmain.actor.predict(actor_input,batch_size=1)
+            obs = self.Qmain.obs(obs_input)
+            proto = self.Qmain.actor(obs)
 
-        k_acts, Q = self.predict_k(data_input, proto, use_target)
+        k_acts, Q = self.predict_k(obs.numpy(), proto.numpy(), use_target)
         k_index = 0
         if not use_target and cfg.SIMULATE > 0:
             # Simulate top critic [cfg.SIMULATE] Q values
@@ -381,7 +391,7 @@ class WolperGrid(AgentWithConverter):
 
         #if self.steps > 50000:
         #    print("----")
-        #    print("Action vect = ", self.Qmain.act_vects[act_index])
+        #    print("Action vect = ", self.flann[act_index])
         #    print("Action str =", self.convert_act(act_index))
         #    print("Action proto = ", proto)
         #    print("----")
@@ -397,13 +407,13 @@ class WolperGrid(AgentWithConverter):
             return np.random.randint(self.action_space.n)
     
     def _ddpg_train(self, batch, step):
-        grad_clip = 40.0
+        grad_clip = 50.0
         input_shape = (self.batch_size,
                        self.observation_size)
         # S(t)
         t_data = np.vstack(batch[0])
         t_data = t_data.reshape(input_shape)
-        t_a = np.array([self.Qmain.act_vects[a] for a in batch[1]])
+        t_a = np.array([self.flann[a] for a in batch[1]])
 
         # S(t+1)
         t1_data = np.vstack(batch[4])
@@ -412,14 +422,18 @@ class WolperGrid(AgentWithConverter):
         for i in range(self.batch_size):
             data = np.array(batch[4][i])
             a = self.predict_move(data, use_target=True)
-            t1_a.append(self.Qmain.act_vects[a])
+            t1_a.append(self.flann[a])
         t1_a = np.array(t1_a)
 
         # Perform DDPG update as per DeepMind implementation:
         # github.com/deepmind/acme/blob/master/acme/agents/tf/ddpg/learning.py
         with tf.GradientTape(persistent=True) as tape:
-            t_Q = self.Qmain.critic([t_data, t_a])
-            t1_Q = self.Qtarget.critic([t1_data, t1_a])
+            t_O = self.Qmain.obs([t_data])
+            t1_O = self.Qtarget.obs([t1_data])
+            t1_O = tree.map_structure(tf.stop_gradient, t1_O)
+
+            t_Q = self.Qmain.critic([t_O, t_a])
+            t1_Q = self.Qtarget.critic([t1_O, t1_a])
 
             # Flatten to [batch_size]
             t_Q = tf.squeeze(t_Q, axis=-1)
@@ -427,14 +441,14 @@ class WolperGrid(AgentWithConverter):
 
             # Critic loss / squared td error
             # github.com/deepmind/trfl/blob/master/trfl/value_ops.py#L34
-            d = (1.0 - batch[3]) * cfg.DISCOUNT_FACTOR
+            d = (1.0 - batch[3].astype(np.float32)) * cfg.DISCOUNT_FACTOR
             td_v = tf.stop_gradient(batch[2] + d * t1_Q)
             td_err = td_v - t_Q
             loss_c = 0.5 * tf.square(td_err)
             loss_critic = tf.math.reduce_mean(loss_c, axis=0)
 
-            dpg_t_a = self.Qmain.actor([t_data])
-            dpg_t_q = self.Qmain.critic([t_data, dpg_t_a])
+            dpg_t_a = self.Qmain.actor([t1_O])
+            dpg_t_q = self.Qmain.critic([t1_O, dpg_t_a])
             # DPG / gradient sample
             # github.com/deepmind/acme/blob/master/acme/tf/losses/dpg.py
             dqda = tape.gradient([dpg_t_q], [dpg_t_a])[0]
@@ -449,7 +463,10 @@ class WolperGrid(AgentWithConverter):
 
         # Gradients
         actor_vars = self.Qmain.actor.trainable_variables
-        crit_vars = self.Qmain.critic.trainable_variables
+        crit_vars = (
+            self.Qmain.critic.trainable_variables +
+            self.Qmain.obs.trainable_variables
+        )
 
         actor_grads = tape.gradient(loss_actor, actor_vars)
         crit_grads = tape.gradient(loss_critic, crit_vars)

@@ -12,105 +12,35 @@ import tensorflow.keras.activations as tfka
 from wg_util import *
 
 kernel_init1 = tfk.initializers.he_normal()
+#kernel_init1 = tfk.initializers.GlorotUniform()
 
 class WolperGrid_NN(object):
     def __init__(self,
                  observation_space,
                  action_space,
                  n_bus = 2,
-                 k_ratio = 1,
                  learning_rate = 1e-5,
-                 is_training = False,
-                 is_target = False):
+                 is_training = False):
         self.observation_size = wg_size_obs(observation_space)
         self.topo_size = observation_space.dim_topo
         self.n_line = observation_space.n_line
         self.disp_size = observation_space.n_gen
-        self.k_ratio = k_ratio
         self.n_bus = n_bus
         self.lr = learning_rate
         self.is_training = is_training
-        self.is_target = is_target
 
-        # Build G(x) dict
-        self.flann = None
-        self.act_n = action_space.n
-        self.k = round(float(self.act_n) * self.k_ratio)
-        self.act_vects = None
-        if not self.is_target:
-            self.construct_flann(action_space)
-
-        # Inner NN sizes
+        # NN sizes
+        self.input_size = self.observation_size
+        self.obs_size = 756
+        self.proto_size = self.n_line * 2 + self.topo_size * 2 + self.disp_size
         self.encoded_size = 512
 
+        self.obs = None
         self.actor = None
         self.critic = None
+        self.construct_wg_obs()
         self.construct_wg_actor()
         self.construct_wg_critic()
-
-    def construct_flann(self, action_space):
-        print("Flann build action vectors..")
-
-        self.act_vects = []
-
-        # Compute sizes and offsets once
-        act_v_size = self.n_line * 2 + self.topo_size * 2 + self.disp_size
-        line_s_offset = [0, self.n_line]
-        line_c_offset = [line_s_offset[1], line_s_offset[1] + self.n_line ]
-        bus_s_offset = [line_c_offset[1], line_c_offset[1] + self.topo_size]
-        bus_c_offset = [bus_s_offset[1], bus_s_offset[1] + self.topo_size]
-        
-        for act in action_space.all_actions:
-            # Declare zero vect
-            act_v = np.zeros(act_v_size, dtype=np.float32)
-            
-            # Copy set line status
-            line_s_f = act._set_line_status.astype(np.float32)
-            act_v[line_s_offset[0]:line_s_offset[1]] = line_s_f
-
-            # Copy change line status
-            line_c_f = act._switch_line_status.astype(np.float32)
-            act_v[line_c_offset[0]:line_c_offset[1]] = line_c_f
-
-            # Copy set bus
-            bus_s_f = act._set_topo_vect.astype(np.float32)
-            act_v[bus_s_offset[0]:bus_s_offset[1]] = bus_s_f
-            act_v[bus_s_offset[0]:bus_s_offset[1]][bus_s_f == 2.0] = -1.0
-
-            # Copy change bus
-            bus_c_f = act._change_bus_vect.astype(np.float32)
-            act_v[bus_c_offset[0]:bus_c_offset[1]] = bus_c_f
-
-            # Dispatch linear rescale
-            disp = disp_act_to_nn(action_space, act._redispatch)
-            act_v[-self.disp_size:] = disp
-
-            # Add to list
-            self.act_vects.append(act_v)
-            
-        flann_pts = np.array(self.act_vects)
-        print("act_size {} -- act_n {} -- k {}".format(act_v_size,
-                                                       self.act_n,
-                                                       self.k))
-        print("..Done")
-
-        print("Flann build tree..")
-        pf.set_distance_type("euclidean")
-        self.flann = pf.FLANN()
-        self.flann.build_index(flann_pts,
-                               algorithm="kmeans",
-                               iterations=7,
-                               cb_index=0.5,
-                               centers_init="kmeanspp",
-                               branching=32,
-                               checks=16)
-        print("..Done")
-
-    def search_flann(self, act_vect):
-        res, _ = self.flann.nn_index(act_vect,
-                                     num_neighbors=self.k)
-        # Dont care about distance
-        return res
 
     def forward_encode(self, layin, size, name):
         # Multi layers encoder
@@ -151,59 +81,68 @@ class WolperGrid_NN(object):
 
     def construct_wg_actor(self):
         # Defines input tensors and scalars
-        input_shape = (self.observation_size,)
-        input_layer = tfk.Input(dtype=tf.float32, shape=input_shape,
-                                name='actor_obs')
+        input_shape = (self.obs_size,)
+        input_obs = tfk.Input(dtype=tf.float32,
+                              shape=input_shape,
+                              name='actor_obs')
 
         # Forward encode
-        hidden = self.forward_encode(input_layer,
+        hidden = self.forward_encode(input_obs,
                                      self.encoded_size,
                                      "actor_encode")
 
         # Lines
-        set_line = self.forward_vec(hidden, self.n_line,
-                                    "actor_set_line")
-        change_line = self.forward_vec(hidden, self.n_line,
-                                       "actor_change_line")
+        #set_line = self.forward_vec(hidden, self.n_line,
+        #                            "actor_set_line")
+        #change_line = self.forward_vec(hidden, self.n_line,
+        #                               "actor_change_line")
         # To set action range [-1;0;1]
-        set_line = tf.nn.tanh(set_line, name="actor_set_line_tanh")
-        # To change action range [0;1]
-        change_line = tf.math.sigmoid(change_line,
-                                      name="actor_change_line_sigm")
+        #set_line = tf.nn.tanh(set_line, name="actor_set_line_tanh")
+        # To change action range [-1;1]
+        #change_line = tf.nn.tanh(change_line,
+        #                         name="actor_change_line_tanh")
 
         # Debug lines tensor shapes
-        print("set_line shape =", set_line.shape)
-        print("change_line shape =", change_line.shape)
+        #print("set_line shape =", set_line.shape)
+        #print("change_line shape =", change_line.shape)
 
         # Buses
-        set_bus = self.forward_vec(hidden, self.topo_size,
-                                   "actor_set_bus")
-        change_bus = self.forward_vec(hidden, self.topo_size,
-                                      "actor_change_bus")
+        #set_bus = self.forward_vec(hidden, self.topo_size,
+        #                           "actor_set_bus")
+        #change_bus = self.forward_vec(hidden, self.topo_size,
+        #                              "actor_change_bus")
         # To set action range [-1;0;1]
-        set_bus = tf.nn.tanh(set_bus, name="actor_set_bus_tanh")
-        # To change action range [0;1]
-        change_bus = tf.math.sigmoid(change_bus,
-                                     name="actor_change_bus_sigm")
+        #set_bus = tf.nn.tanh(set_bus, name="actor_set_bus_tanh")
+        # To change action range [-1;1]
+        #change_bus = tf.nn.tanh(change_bus,
+        #                        name="actor_change_bus_tanh")
 
         # Debug buses tensors shapes
-        print ("set_bus shape=", set_bus.shape)
-        print ("change_bus shape=", change_bus.shape)
+        #print ("set_bus shape=", set_bus.shape)
+        #print ("change_bus shape=", change_bus.shape)
 
         # Redispatch
-        redisp = self.forward_vec(hidden, self.disp_size, "actor_redisp")
+        #redisp = self.forward_vec(hidden, self.disp_size, "actor_redisp")
         # To action range [-1;1]
-        redisp = tf.nn.tanh(redisp, name="actor_redisp_tanh")
+        #redisp = tf.nn.tanh(redisp, name="actor_redisp_tanh")
         
         # Debug redisp tensor shape
-        print ("redisp shape=", redisp.shape)
+        #print ("redisp shape=", redisp.shape)
 
         # Proto action
-        proto_vects = [set_line, change_line, set_bus, change_bus, redisp]
-        proto = tf.concat(proto_vects, axis=1, name="actor_concat")
+        #proto_vects = [set_line, change_line, set_bus, change_bus, redisp]
+        #proto = tf.concat(proto_vects, axis=1, name="actor_concat")
+        
+        proto = self.forward_vec(hidden,
+                                 self.proto_size,
+                                 "actor_proto1")
+        #proto = tf.nn.elu(proto, name="actor_elu")
+        #proto = self.forward_vec(proto, self.act_v_size, "actor_proto2")
+        # To action range [-1;1]
+        #proto = tf.nn.tanh(proto, name="actor_proto_tanh")
         
         # Backwards pass
-        actor_inputs = [ input_layer ]
+        actor_inputs = [ input_obs ]
         actor_outputs = [ proto ]
         self.actor = tfk.Model(inputs=actor_inputs,
                                outputs=actor_outputs,
@@ -214,13 +153,11 @@ class WolperGrid_NN(object):
         self.actor.compile(loss=losses, optimizer=self.actor_opt)
 
     def construct_wg_critic(self):
-        input_obs_shape = (self.observation_size,)
+        input_shape = (self.obs_size,)
         input_obs = tfk.Input(dtype=tf.float32,
-                              shape=input_obs_shape,
+                              shape=input_shape,
                               name='critic_obs')
-        input_proto_shape = (self.n_line * 2 + \
-                             self.topo_size * 2 + \
-                             self.disp_size,)
+        input_proto_shape = (self.proto_size,)
         input_proto = tfk.Input(dtype=tf.float32,
                                 shape=input_proto_shape,
                                 name='critic_proto')
@@ -236,7 +173,7 @@ class WolperGrid_NN(object):
                         kernel_initializer=kernel_init1,
                         name="critic_linear2")(a2)
         a4 = tf.nn.elu(a3, name="critic_relu2")
-        a3 = self.forward_encode(a4, 384, "critic_encode")
+        a3 = self.forward_vec(a4, 384, "critic_l3")
         Q = self.forward_vec(a3, 1, "critic_Q")
 
         # Backwards pass
@@ -250,6 +187,23 @@ class WolperGrid_NN(object):
         # Keras model
         self.critic_opt = tfko.Adam(lr=self.lr)
         self.critic.compile(loss=losses, optimizer=self.critic_opt)        
+
+    def construct_wg_obs(self):
+        input_shape = (self.input_size,)
+        input_obs = tfk.Input(dtype=tf.float32,
+                              shape=input_shape,
+                              name='input_obs')
+        output_obs = self.forward_encode(input_obs,
+                                         self.obs_size,
+                                         "obs_enc")
+        obs_inputs = [input_obs]
+        obs_outputs = [output_obs]
+        self.obs = tfk.Model(inputs=obs_inputs,
+                             outputs=obs_outputs,
+                             name="obs_"  + self.__class__.__name__)
+        losses = [ self._mse_loss ]
+        self.obs_opt = tfko.Adam(lr=self.lr)
+        self.obs.compile(loss=losses, optimizer=self.obs_opt)
 
     def _me_loss(self, y_true, y_pred):
         error = tf.math.abs(y_true - y_pred)
@@ -285,18 +239,22 @@ class WolperGrid_NN(object):
         # Saves model at specified path
 
         # Compute paths
+        obs_path = os.path.join(path, "obs.tf")
         actor_path = os.path.join(path, "actor.tf")
         critic_path = os.path.join(path, "critic.tf")
 
+        self.obs.save_weights(obs_path)
         self.actor.save_weights(actor_path)
         self.critic.save_weights(critic_path)
         print("Successfully saved model at: {}".format(path))
 
     def load_network(self, path):
         # Compute paths
+        obs_path = os.path.join(path, "obs.tf")
         actor_path = os.path.join(path, "actor.tf")
         critic_path = os.path.join(path, "critic.tf")
 
+        self.obs.load_weights(actor_path)
         self.actor.load_weights(actor_path)
         self.critic.load_weights(critic_path)
         print("Succesfully loaded network from: {}".format(path))
