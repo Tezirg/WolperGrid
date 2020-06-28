@@ -464,8 +464,8 @@ class WolperGrid(AgentWithConverter):
         # Gradients
         actor_vars = self.Qmain.actor.trainable_variables
         crit_vars = (
-            self.Qmain.critic.trainable_variables +
-            self.Qmain.obs.trainable_variables
+            self.Qmain.obs.trainable_variables +
+            self.Qmain.critic.trainable_variables
         )
 
         actor_grads = tape.gradient(loss_actor, actor_vars)

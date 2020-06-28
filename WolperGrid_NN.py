@@ -11,8 +11,8 @@ import tensorflow.keras.activations as tfka
 
 from wg_util import *
 
-kernel_init1 = tfk.initializers.he_normal()
-#kernel_init1 = tfk.initializers.GlorotUniform()
+#kernel_init1 = tfk.initializers.he_normal()
+kernel_init1 = tfk.initializers.GlorotUniform()
 
 class WolperGrid_NN(object):
     def __init__(self,
@@ -33,7 +33,8 @@ class WolperGrid_NN(object):
         self.input_size = self.observation_size
         self.obs_size = 756
         self.proto_size = self.n_line * 2 + self.topo_size * 2 + self.disp_size
-        self.encoded_size = 512
+        self.act_h = 512
+        self.crit_h = 1024
 
         self.obs = None
         self.actor = None
@@ -79,6 +80,53 @@ class WolperGrid_NN(object):
                          name=name+"_fc3_vec")(vec_2)
         return vec
 
+    def construct_wg_obs(self):
+        input_shape = (self.input_size,)
+        input_obs = tfk.Input(dtype=tf.float32,
+                              shape=input_shape,
+                              name='input_obs')
+        
+        h1 = self.forward_encode(input_obs, self.obs_size, "obs_enc")
+        output_obs = tf.nn.elu(h1, name="obs_elu1")
+
+        obs_inputs = [input_obs]
+        obs_outputs = [output_obs]
+        self.obs = tfk.Model(inputs=obs_inputs,
+                             outputs=obs_outputs,
+                             name="obs_"  + self.__class__.__name__)
+        losses = [ self._mse_loss ]
+        self.obs_opt = tfko.Adam(lr=self.lr)
+        self.obs.compile(loss=losses, optimizer=self.obs_opt)
+
+    def construct_wg_critic(self):
+        input_obs_shape = (self.obs_size,)
+        input_obs = tfk.Input(dtype=tf.float32,
+                              shape=input_obs_shape,
+                              name='critic_obs')
+        input_proto_shape = (self.proto_size,)
+        input_proto = tfk.Input(dtype=tf.float32,
+                                shape=input_proto_shape,
+                                name='critic_proto')
+
+        input_concat = tf.concat([input_obs, input_proto], axis=-1,
+                                 name="critic_concat")
+        h1 = self.forward_encode(input_concat, self.crit_h, "critic_enc1")
+        h2 = tf.nn.elu(h1, name="critic_elu1")
+        h3 = self.forward_encode(h2, self.crit_h / 2, "critic_enc2")
+        h4 = tf.nn.elu(h3, name="critic_elu2")
+        Q = self.forward_vec(h4, 1, "critic_Q")
+
+        # Backwards pass
+        critic_inputs = [ input_obs, input_proto ]
+        critic_outputs = [ Q ]
+        self.critic = tfk.Model(inputs=critic_inputs,
+                                outputs=critic_outputs,
+                                name="critic_" + self.__class__.__name__)
+        losses = [ self._mse_loss ]
+        # Keras model
+        self.critic_opt = tfko.Adam(lr=self.lr)
+        self.critic.compile(loss=losses, optimizer=self.critic_opt)        
+
     def construct_wg_actor(self):
         # Defines input tensors and scalars
         input_shape = (self.obs_size,)
@@ -87,10 +135,8 @@ class WolperGrid_NN(object):
                               name='actor_obs')
 
         # Forward encode
-        hidden = self.forward_encode(input_obs,
-                                     self.encoded_size,
-                                     "actor_encode")
-
+        h1 = self.forward_encode(input_obs, self.act_h + 156, "actor_encode1")
+        h2 = tf.nn.elu(h1, name="actor_elu1")
         # Lines
         #set_line = self.forward_vec(hidden, self.n_line,
         #                            "actor_set_line")
@@ -133,13 +179,14 @@ class WolperGrid_NN(object):
         #proto_vects = [set_line, change_line, set_bus, change_bus, redisp]
         #proto = tf.concat(proto_vects, axis=1, name="actor_concat")
         
-        proto = self.forward_vec(hidden,
-                                 self.proto_size,
-                                 "actor_proto1")
         #proto = tf.nn.elu(proto, name="actor_elu")
         #proto = self.forward_vec(proto, self.act_v_size, "actor_proto2")
         # To action range [-1;1]
         #proto = tf.nn.tanh(proto, name="actor_proto_tanh")
+        
+        h3 = self.forward_vec(h2, self.act_h, "actor_encode2")
+        h4 = tf.nn.tanh(h3, name="actor_tanh2")
+        proto = self.forward_vec(h4, self.proto_size, "actor_proto1")
         
         # Backwards pass
         actor_inputs = [ input_obs ]
@@ -148,62 +195,8 @@ class WolperGrid_NN(object):
                                outputs=actor_outputs,
                                name="actor_" + self.__class__.__name__)
         losses = [ self._me_loss ]
-
         self.actor_opt = tfko.Adam(lr=self.lr)
         self.actor.compile(loss=losses, optimizer=self.actor_opt)
-
-    def construct_wg_critic(self):
-        input_shape = (self.obs_size,)
-        input_obs = tfk.Input(dtype=tf.float32,
-                              shape=input_shape,
-                              name='critic_obs')
-        input_proto_shape = (self.proto_size,)
-        input_proto = tfk.Input(dtype=tf.float32,
-                                shape=input_proto_shape,
-                                name='critic_proto')
-
-        input_concat = tf.concat([input_obs, input_proto], axis=-1,
-                                 name="critic_concat")
-
-        a1 = tfkl.Dense(1024,
-                        kernel_initializer=kernel_init1,
-                        name="critic_linear")(input_concat)
-        a2 = tf.nn.elu(a1, name="critic_relu1")
-        a3 = tfkl.Dense(728,
-                        kernel_initializer=kernel_init1,
-                        name="critic_linear2")(a2)
-        a4 = tf.nn.elu(a3, name="critic_relu2")
-        a3 = self.forward_vec(a4, 384, "critic_l3")
-        Q = self.forward_vec(a3, 1, "critic_Q")
-
-        # Backwards pass
-        critic_inputs = [ input_obs, input_proto ]
-        critic_outputs = [ Q ]
-        self.critic = tfk.Model(inputs=critic_inputs,
-                                outputs=critic_outputs,
-                                name="critic_" + self.__class__.__name__)
-
-        losses = [ self._mse_loss ]
-        # Keras model
-        self.critic_opt = tfko.Adam(lr=self.lr)
-        self.critic.compile(loss=losses, optimizer=self.critic_opt)        
-
-    def construct_wg_obs(self):
-        input_shape = (self.input_size,)
-        input_obs = tfk.Input(dtype=tf.float32,
-                              shape=input_shape,
-                              name='input_obs')
-        output_obs = self.forward_encode(input_obs,
-                                         self.obs_size,
-                                         "obs_enc")
-        obs_inputs = [input_obs]
-        obs_outputs = [output_obs]
-        self.obs = tfk.Model(inputs=obs_inputs,
-                             outputs=obs_outputs,
-                             name="obs_"  + self.__class__.__name__)
-        losses = [ self._mse_loss ]
-        self.obs_opt = tfko.Adam(lr=self.lr)
-        self.obs.compile(loss=losses, optimizer=self.obs_opt)
 
     def _me_loss(self, y_true, y_pred):
         error = tf.math.abs(y_true - y_pred)
@@ -218,22 +211,27 @@ class WolperGrid_NN(object):
 
     @staticmethod
     def update_target_hard(source_model, target_model):
-        src_weights = source_model.get_weights()
-        target_model.set_weights(src_weights)
+        # Get parameters to update
+        target_params = target_model.variables
+        source_params = source_model.variables
+
+        # Update each param
+        for src, dest in zip(source_params, target_params):
+            dest.assign(src)
 
     @staticmethod
     def update_target_soft(source_model, target_model, tau=1e-3):
         tau_inv = 1.0 - tau
         # Get parameters to update
-        target_params = target_model.trainable_variables
-        source_params = source_model.trainable_variables
+        target_params = target_model.variables
+        source_params = source_model.variables
 
         # Update each param
-        for i, var in enumerate(target_params):
-            var_update = source_params[i].value() * tau
-            var_persist = var.value() * tau_inv
+        for src, dest in zip(source_params, target_params):
+            var_update = src.value() * tau
+            var_persist = dest.value() * tau_inv
             # Polyak averaging
-            var.assign(var_update + var_persist)
+            dest.assign(var_update + var_persist)
 
     def save_network(self, path):
         # Saves model at specified path
