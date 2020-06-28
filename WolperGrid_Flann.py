@@ -72,13 +72,13 @@ class WolperGrid_Flann(object):
 
     def construct_vects(self):
         print("Flann build action vectors..")
+        print("{} x {}".format(self.action_space.n, self.action_size))
         
         for act in self.action_space.all_actions:
             act_v = self._act_to_flann(act)
             # Add to list
             self._act_vects.append(act_v)
             
-        print("act_size {}".format(self.action_size))
         print("..Done")
         
     def construct_flann(self):
