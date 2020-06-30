@@ -9,15 +9,31 @@
 # This file is part of L2RPN Baselines, L2RPN Baselines a repository to host baselines for l2rpn competitions.
 
 export WG_NAME=wg-X.0.0.x
-export WG_DATA=~/data_grid2op/rte_case14_realistic
+export WG_DATA=~/data_grid2op/l2rpn_wcci_2020
 
 ./inspect_action_space.py --path_data $WG_DATA
 
 rm -rf ./logs-train/$WG_NAME
+# First time
 ./train.py\
     --name $WG_NAME \
     --data_dir $WG_DATA \
-    --num_episode 1000
+    --num_episode 10000
+
+# Flann update
+./train.py\
+    --name $WG_NAME \
+    --data_dir $WG_DATA \
+    --action_file ./models/$WG_NAME/actions.npy \
+    --num_episode 10000
+
+# Hypers
+./train.py\
+    --name $WG_NAME \
+    --data_dir $WG_DATA \
+    --action_file ./models/$WG_NAME/actions.npy \
+    --flann_file ./models/$WG_NAME/flann.index \
+    --num_episode 100000
 
 rm -rf ./logs-eval/$WG_NAME
 ./evaluate.py \

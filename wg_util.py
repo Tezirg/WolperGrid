@@ -171,6 +171,7 @@ def unitary_acts_to_impact_tree(action_space):
     # Process impact for each actions
     # Skip do nothing at 0
     for act_id, a in enumerate(action_space.all_actions[1:]):
+        c = -1
         # Find category & index
         ## Lines set
         if np.any(a._set_line_status != 0):
@@ -195,12 +196,13 @@ def unitary_acts_to_impact_tree(action_space):
             c = 2
             i = np.where(a._redispatch != 0.0)[0][0]
 
-        # Register id into tree
-        tree[c][i].append(act_id + 1)
+        if c != -1:
+            # Register id into tree
+            tree[c][i].append(act_id + 1)
 
     # Add do nothing in each category
     for i in range(3):
-        tree[i].append([0,0])
+        tree[i].append([0,0,0])
     return tree
 
 def print_impact_tree(tree):

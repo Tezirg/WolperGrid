@@ -19,6 +19,7 @@ class WolperGrid_Config():
     LR = 1e-4
     GRADIENT_CLIP = False
     VERBOSE = True
+    ILLEGAL_GAME_OVER = False
     SIMULATE = -1
     SIMULATE_DO_NOTHING = False
 

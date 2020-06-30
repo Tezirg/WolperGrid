@@ -18,11 +18,27 @@ class WolperGrid(AgentWithConverter):
     def __init__(self,
                  observation_space,
                  action_space,
+                 action_file=None,
+                 flann_file=None,
                  name=__name__,
                  is_training=False):
         # Call parent constructor
         super().__init__(action_space,
                          action_space_converter=IdToAct)
+
+        # Filter actions
+        if action_file is None:
+            if cfg.VERBOSE:
+                print ("Filtering actions ..")
+            self.action_space.filter_action(self._filter_action)
+            if cfg.VERBOSE:
+                print (".. Done filtering actions")
+        else:
+            if cfg.VERBOSE:
+                print ("Loading actions ..")
+            self.action_space.init_converter(all_actions=action_file)
+            if cfg.VERBOSE:
+                print (".. Done loading actions")
 
         # Store constructor params
         self.observation_space = observation_space
@@ -39,15 +55,20 @@ class WolperGrid(AgentWithConverter):
         self.obs = None
         self.state = []
 
+        # Create G(x)
+        self.flann = WolperGrid_Flann(self.action_space)
+        if flann_file is None:
+            self.flann.construct_flann()
+        else:
+            self.flann.load_flann(flann_file)
+
         # Load network graph
         self.Qmain = WolperGrid_NN(self.observation_space,
                                    self.action_space,
+                                   self.flann.action_size_bin,
                                    learning_rate = cfg.LR,
                                    is_training = self.is_training)
 
-        # Create G(x)
-        self.flann = WolperGrid_Flann(self.action_space)
-        
         # Setup training vars if needed
         if self.is_training:
             self._init_training()
@@ -69,6 +90,7 @@ class WolperGrid(AgentWithConverter):
         self.loss_critic = 42.0
         self.Qtarget = WolperGrid_NN(self.observation_space,
                                      self.action_space,
+                                     self.flann.action_size_bin,
                                      learning_rate = self.lr,
                                      is_training = self.is_training)
         WolperGrid_NN.update_target_hard(self.Qmain.obs,
@@ -81,6 +103,22 @@ class WolperGrid(AgentWithConverter):
         self.impact_tree = None
         if cfg.UNIFORM_EPSILON:
             self.impact_tree = unitary_acts_to_impact_tree(self.action_space)
+
+    def _filter_action(self, action):
+        act_dict = action.impact_on_objects()
+        if len(act_dict["topology"]["bus_switch"]) > 0:
+            for d in act_dict["topology"]["bus_switch"]:
+                if d["substation"] == 16:
+                    return False
+        if len(act_dict["topology"]["assigned_bus"]) > 0:
+            for d in act_dict["topology"]["assigned_bus"]:
+                if d["substation"] == 16:
+                    return False
+        if len(act_dict["topology"]["disconnect_bus"]) > 0:
+            for d in act_dict["topology"]["disconnect_bus"]:
+                if d["substation"] == 16:
+                    return False
+        return True
 
     def _reset_state(self, current_obs):
         # Initial state
@@ -161,6 +199,9 @@ class WolperGrid(AgentWithConverter):
             # Convert observation
             new_state = self.convert_obs(new_obs)
 
+            if cfg.ILLEGAL_GAME_OVER and info["is_illegal"]:
+                self.done = True
+
             # Save to exp buffer
             self.exp_buffer.add(self.state, pred,
                                 reward, self.done, new_state)
@@ -239,6 +280,11 @@ class WolperGrid(AgentWithConverter):
         os.makedirs(modelpath, exist_ok=True)
         self.tf_writer = tf.summary.create_file_writer(logpath, name=self.name)
         self._save_hyperparameters(save_path, env, iterations)
+
+        # Save actions and flann index
+        self.action_space.save(modelpath, "actions.npy")
+        flann_path = os.path.join(modelpath, "flann.index")
+        self.flann.save_flann(flann_path)
 
         # Shuffle training data
         def shuff(x):
@@ -361,33 +407,43 @@ class WolperGrid(AgentWithConverter):
             obs = self.Qmain.obs(obs_input)
             proto = self.Qmain.actor(obs)
 
+        # Send k closest actions to critic
         k_acts, Q = self.predict_k(obs.numpy(), proto.numpy(), use_target)
-        k_index = 0
-        if not use_target and cfg.SIMULATE > 0:
-            # Simulate top critic [cfg.SIMULATE] Q values
-            # Keep the index of the highest simulate result
-            r = float('-inf')
-            k_indexes = np.argpartition(Q, -cfg.SIMULATE)[-cfg.SIMULATE:]
-            for k_idx in k_indexes:
-                act_idx = k_acts[k_idx]
-                act = self.convert_act(act_idx)
-                _, r_test, d_test, i_test = self.obs.simulate(act)
-                if r_test > r and d_test is False:
-                    r = r_test
-                    k_index = k_idx
+
+        # Get index of highest critic q value out of K
+        k_index = np.argmax(Q)
+
+        # Get action index
+        act_index = k_acts[k_index]
+
+        # Simulate if enabled
+        cfg_sim_enabled = (cfg.SIMULATE > 0) or (cfg.SIMULATE_DO_NOTHING)
+        sim_enabled = (not use_target) and cfg_sim_enabled
+        if sim_enabled:
+            # Simulate Top Q
+            act = self.convert_act(act_index)
+            _, r, _, _ = self.obs.simulate(act)
+
+            if cfg.SIMULATE > 0:
+                # Simulate top critic [cfg.SIMULATE] Q values
+                # Keep the index of the highest simulate result
+                k_indexes = np.argpartition(Q, -cfg.SIMULATE)[-cfg.SIMULATE:]
+                # Skip Top Q, already simulated
+                for k_idx in k_indexes[:-1]:
+                    act_idx = k_acts[k_idx]
+                    act = self.convert_act(act_idx)
+                    _, r_test, _, _ = self.obs.simulate(act)
+                    if r_test > r:
+                        r = r_test
+                        k_index = k_idx
+                        act_index = act_idx
 
             if cfg.SIMULATE_DO_NOTHING:
                 # Test against do nothing as well
                 act = self.convert_act(0)
-                _, r_test, d_test, i_test = self.obs.simulate(act)
-                if r_test > r and d_test is False:
-                    return 0
-        else:
-            # Get index of highest critic q value
-            k_index = np.argmax(Q)
-
-        # Get action index
-        act_index = k_acts[k_index]
+                _, r_test, _, _ = self.obs.simulate(act)
+                if r_test > r:
+                    act_index = 0
 
         #if self.steps > 50000:
         #    print("----")
@@ -444,7 +500,8 @@ class WolperGrid(AgentWithConverter):
             d = (1.0 - batch[3].astype(np.float32)) * cfg.DISCOUNT_FACTOR
             td_v = tf.stop_gradient(batch[2] + d * t1_Q)
             td_err = td_v - t_Q
-            loss_c = 0.5 * tf.square(td_err)
+            #loss_c = 0.5 * tf.square(td_err)
+            loss_c = tf.square(td_err)
             loss_critic = tf.math.reduce_mean(loss_c, axis=0)
 
             dpg_t_a = self.Qmain.actor([t1_O])
@@ -455,11 +512,11 @@ class WolperGrid(AgentWithConverter):
             # Gradient clip if enabled
             if cfg.GRADIENT_CLIP:
                 dqda = tf.clip_by_norm(dqda, 1.0, axes=-1)
-            target_a = dqda + dpg_t_a
+            target_a = dqda + t1_a
             target_a = tf.stop_gradient(target_a)
-            loss_actor = 0.5 * tf.reduce_sum(tf.square(target_a - dpg_t_a),
-                                             axis=-1)
-            loss_actor = tf.reduce_mean(loss_actor, axis=0)
+            target_sq = tf.square(target_a - dpg_t_a)
+            loss_act = 0.5 * tf.reduce_sum(target_sq, axis=-1)
+            loss_actor = tf.reduce_mean(loss_act, axis=0)
 
         # Gradients
         actor_vars = self.Qmain.actor.trainable_variables

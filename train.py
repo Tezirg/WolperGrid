@@ -17,7 +17,7 @@ DEFAULT_SAVE_DIR = "./models"
 DEFAULT_LOG_DIR = "./logs-train"
 DEFAULT_EPISODES = 10
 DEFAULT_BATCH_SIZE = 32
-DEFAULT_LR = 1e-4
+DEFAULT_LR = 1e-5
 DEFAULT_VERBOSE = True
 
 def cli():
@@ -37,6 +37,12 @@ def cli():
     parser.add_argument("--logs_dir", required=False,
                         default=DEFAULT_LOG_DIR, type=str,
                         help="Directory to save the logs")
+    parser.add_argument("--action_file", required=False,
+                        default=None, type=str,
+                        help="Path to pre-filtered action space")
+    parser.add_argument("--flann_file", required=False,
+                        default=None, type=str,
+                        help="Path to pre-build flann index")
     # Params
     parser.add_argument("--num_episode", required=False,
                         default=DEFAULT_EPISODES, type=int,
@@ -59,6 +65,8 @@ def train(env,
           logs_path=DEFAULT_LOG_DIR,
           batch_size=DEFAULT_BATCH_SIZE,
           learning_rate=DEFAULT_LR,
+          action_path=None,
+          flann_path=None,
           verbose=DEFAULT_VERBOSE):
 
     # Set config
@@ -67,11 +75,12 @@ def train(env,
     WGConfig.BATCH_SIZE = batch_size
     WGConfig.VERBOSE = verbose
     WGConfig.INITIAL_EPSILON = 1.0
-    WGConfig.FINAL_EPSILON = 0.01
-    WGConfig.DECAY_EPSILON = 2000
+    WGConfig.FINAL_EPSILON = 0.003
+    WGConfig.DECAY_EPSILON = 5000
     WGConfig.UNIFORM_EPSILON = True
-    WGConfig.K = 256
+    WGConfig.K = 512
     WGConfig.UPDATE_FREQ = 128
+    WGConfig.ILLEGAL_GAME_OVER = False
     WGConfig.SIMULATE = -1
     WGConfig.SIMULATE_DO_NOTHING = False
     WGConfig.DISCOUNT_FACTOR = 0.99
@@ -81,6 +90,8 @@ def train(env,
 
     agent = WGAgent(env.observation_space,
                     env.action_space,
+                    action_file=action_path,
+                    flann_file=flann_path,
                     name=name, 
                     is_training=True)
 
@@ -124,13 +135,19 @@ if __name__ == "__main__":
     #cr.addReward("bridge", BridgeReward(), 1.0)
     #cr.addReward("distance", DistanceReward(), 1.0)
     #cr.addReward("overflow", CloseToOverflowReward(), 1.0)
-    cr.addReward("game", GameplayReward(), 2.0)
+    gp = GameplayReward()
+    gp.set_range(-1.0, 1.0)
+    cr.addReward("game", gp, 1.0)
     #cr.addReward("eco", EconomicReward(), 2.0)
-    cr.addReward("reco", LinesReconnectedReward(), 1.0)
-    cr.addReward("l2rpn", L2RPNReward(), 2.0 / env.n_line)
+    #cr.addReward("reco", LinesReconnectedReward(), 1.0)
+    l2 = L2RPNReward()
+    l2.set_range(-1.0, env.n_line)
+    cr.addReward("l2rpn", l2, 1.0 / env.n_line)
+    #cr.addReward("flat", IncreasingFlatReward(), 1.0 / 8063.0)
     cr.set_range(-1.0, 1.0)
     # Initialize custom rewards
     cr.initialize(env)
+    l2.set_range(-1.0, env.n_line)
 
     train(env,
           name = args.name,
@@ -139,4 +156,6 @@ if __name__ == "__main__":
           load_path = args.load_file,
           logs_path = args.logs_dir,
           batch_size = args.batch_size,
-          learning_rate = args.learning_rate)
+          learning_rate = args.learning_rate,
+          action_path = args.action_file,
+          flann_path = args.flann_file)
