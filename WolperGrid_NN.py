@@ -94,9 +94,8 @@ class WolperGrid_NN(object):
         self.obs = tfk.Model(inputs=obs_inputs,
                              outputs=obs_outputs,
                              name="obs_"  + self.__class__.__name__)
-        losses = [ self._mse_loss ]
         self.obs_opt = tfko.Adam(lr=self.lr)
-        self.obs.compile(loss=losses, optimizer=self.obs_opt)
+        self.obs.compile(loss="mse", optimizer=self.obs_opt)
 
     def construct_wg_actor(self):
         # Defines input tensors and scalars
@@ -117,9 +116,8 @@ class WolperGrid_NN(object):
         self.actor = tfk.Model(inputs=actor_inputs,
                                outputs=actor_outputs,
                                name="actor_" + self.__class__.__name__)
-        losses = [ self._me_loss ]
         self.actor_opt = tfko.Adam(lr=self.lr)
-        self.actor.compile(loss=losses, optimizer=self.actor_opt)
+        self.actor.compile(loss="mse", optimizer=self.actor_opt)
 
     def construct_wg_critic(self):
         input_obs_shape = (self.obs_size,)
@@ -143,21 +141,9 @@ class WolperGrid_NN(object):
         self.critic = tfk.Model(inputs=critic_inputs,
                                 outputs=critic_outputs,
                                 name="critic_" + self.__class__.__name__)
-        losses = [ self._mse_loss ]
         # Keras model
         self.critic_opt = tfko.Adam(lr=self.lr)
-        self.critic.compile(loss=losses, optimizer=self.critic_opt)
-
-    def _me_loss(self, y_true, y_pred):
-        error = tf.math.abs(y_true - y_pred)
-        loss = tf.math.reduce_mean(error, name="loss_me")
-        return loss
-
-    def _mse_loss(self, y_true, y_pred):
-        sq_error = tf.math.square(y_true - y_pred)
-        loss = tf.math.reduce_mean(sq_error,
-                                   name="loss_mse")
-        return loss
+        self.critic.compile(loss="mse", optimizer=self.critic_opt)
 
     @staticmethod
     def update_target_hard(source_model, target_model):
