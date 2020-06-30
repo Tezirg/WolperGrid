@@ -25,7 +25,7 @@ rm -rf ./logs-train/$WG_NAME
     --name $WG_NAME \
     --data_dir $WG_DATA \
     --action_file ./models/$WG_NAME/actions.npy \
-    --num_episode 10000
+    --num_episode 100000
 
 # Hypers
 ./train.py\
