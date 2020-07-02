@@ -63,9 +63,9 @@ class WolperGrid(AgentWithConverter):
             self.flann.load_flann(flann_file)
 
         # Load network graph
-        self.Qmain = WolperGrid_NN(self.observation_space,
-                                   self.action_space,
-                                   self.flann.action_size_bin,
+        self.Qmain = WolperGrid_NN(self.action_space,
+                                   self.observation_size,
+                                   self.flann.action_size,
                                    learning_rate = cfg.LR,
                                    is_training = self.is_training)
 
@@ -88,9 +88,9 @@ class WolperGrid(AgentWithConverter):
         self.step_epsilon /= cfg.DECAY_EPSILON
         self.loss_actor = 42.0
         self.loss_critic = 42.0
-        self.Qtarget = WolperGrid_NN(self.observation_space,
-                                     self.action_space,
-                                     self.flann.action_size_bin,
+        self.Qtarget = WolperGrid_NN(self.action_space,
+                                     self.observation_size,
+                                     self.flann.action_size,
                                      learning_rate = self.lr,
                                      is_training = self.is_training)
         WolperGrid_NN.update_target_hard(self.Qmain.obs,
@@ -180,8 +180,10 @@ class WolperGrid(AgentWithConverter):
         episode_do_nothing = 0
 
         if cfg.VERBOSE:
-            start_episode_msg = "Episode [{:04d}] - Epsilon {}"
-            print(start_episode_msg.format(m, self.epsilon))
+            scenario_path = env.chronics_handler.real_data.get_id()
+            scenario_name = os.path.basename(os.path.abspath(scenario_path))
+            start_episode_msg = "Episode [{:04d}] - {} - Epsilon {}"
+            print(start_episode_msg.format(m, scenario_name, self.epsilon))
 
         # Loop for t in episode steps
         max_t = env.chronics_handler.max_timestep() - 1
@@ -461,7 +463,7 @@ class WolperGrid(AgentWithConverter):
         else:
             # Random action
             return np.random.randint(self.action_space.n)
-    
+
     def _ddpg_train(self, batch, step):
         grad_clip = 50.0
         input_shape = (self.batch_size,
@@ -500,8 +502,7 @@ class WolperGrid(AgentWithConverter):
             d = (1.0 - batch[3].astype(np.float32)) * cfg.DISCOUNT_FACTOR
             td_v = tf.stop_gradient(batch[2] + d * t1_Q)
             td_err = td_v - t_Q
-            #loss_c = 0.5 * tf.square(td_err)
-            loss_c = tf.square(td_err)
+            loss_c = 0.5 * tf.square(td_err)
             loss_critic = tf.math.reduce_mean(loss_c, axis=0)
 
             dpg_t_a = self.Qmain.actor([t1_O])

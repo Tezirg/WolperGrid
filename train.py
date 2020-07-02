@@ -17,7 +17,7 @@ DEFAULT_SAVE_DIR = "./models"
 DEFAULT_LOG_DIR = "./logs-train"
 DEFAULT_EPISODES = 10
 DEFAULT_BATCH_SIZE = 32
-DEFAULT_LR = 1e-5
+DEFAULT_LR = 2e-5
 DEFAULT_VERBOSE = True
 
 def cli():
@@ -76,10 +76,10 @@ def train(env,
     WGConfig.VERBOSE = verbose
     WGConfig.INITIAL_EPSILON = 1.0
     WGConfig.FINAL_EPSILON = 0.003
-    WGConfig.DECAY_EPSILON = 5000
+    WGConfig.DECAY_EPSILON = 10000
     WGConfig.UNIFORM_EPSILON = True
     WGConfig.K = 512
-    WGConfig.UPDATE_FREQ = 128
+    WGConfig.UPDATE_FREQ = 96
     WGConfig.ILLEGAL_GAME_OVER = False
     WGConfig.SIMULATE = -1
     WGConfig.SIMULATE_DO_NOTHING = False
@@ -141,13 +141,13 @@ if __name__ == "__main__":
     #cr.addReward("eco", EconomicReward(), 2.0)
     #cr.addReward("reco", LinesReconnectedReward(), 1.0)
     l2 = L2RPNReward()
-    l2.set_range(-1.0, env.n_line)
+    l2.set_range(-env.n_line, env.n_line)
     cr.addReward("l2rpn", l2, 1.0 / env.n_line)
     #cr.addReward("flat", IncreasingFlatReward(), 1.0 / 8063.0)
     cr.set_range(-1.0, 1.0)
     # Initialize custom rewards
     cr.initialize(env)
-    l2.set_range(-1.0, env.n_line)
+    l2.set_range(-env.n_line, env.n_line)
 
     train(env,
           name = args.name,

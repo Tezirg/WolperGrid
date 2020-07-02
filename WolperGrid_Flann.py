@@ -15,40 +15,47 @@ class WolperGrid_Flann(object):
         self.disp_size = action_space.n_gen
 
         # Compute sizes and offsets once
-        self.action_size = self.n_line * 2 + \
+        self._action_size = self.n_line * 2 + \
             self.topo_size * 2 + \
-            self.disp_size
+            self.disp_size * 1
 
-        self.line_s_offset = [
+        self.line_s_off = [
             0,
             self.n_line
         ]
-        self.line_c_offset = [
-            self.line_s_offset[1],
-            self.line_s_offset[1] + self.n_line
+        self.line_c_off = [
+            self.line_s_off[1],
+            self.line_s_off[1] + self.n_line
         ]
-        self.bus_s_offset = [
-            self.line_c_offset[1],
-            self.line_c_offset[1] + self.topo_size
+        self.bus_s_off = [
+            self.line_c_off[1],
+            self.line_c_off[1] + self.topo_size
         ]
-        self.bus_c_offset = [
-            self.bus_s_offset[1],
-            self.bus_s_offset[1] + self.topo_size
+        self.bus_c_off = [
+            self.bus_s_off[1],
+            self.bus_s_off[1] + self.topo_size
+        ]
+        self.disp_off = [
+            self.bus_c_off[1],
+            self.bus_c_off[1] + self.disp_size
         ]
 
-        # Binary sizes
+        # Binary sizes and offsets
         self.bin_cut = 16
         self.bins_line = int(math.ceil(self.n_line / self.bin_cut))
         self.bins_bus = int(math.ceil(self.topo_size / self.bin_cut))
         self.bins_gens = int(math.ceil(self.disp_size / self.bin_cut))
 
-        self.action_size_bin = 3 * self.bins_line
-        self.action_size_bin += 3 * self.bins_bus
-        self.action_size_bin += self.bins_gens + 1
+        self._action_size_bin = 3 * self.bins_line
+        self._action_size_bin += 3 * self.bins_bus
+        self._action_size_bin += self.bins_gens + 1
 
         bin_max = np.ones(self.bin_cut, dtype=np.int32)
         self.bin_max = bin_max.dot(1 << np.arange(self.bin_cut)[::-1])
         self.bin_max = float(self.bin_max)
+
+        # Expose proto size
+        self.action_size = self._action_size
 
         # Declare variables
         self._act_vects = []
@@ -58,31 +65,32 @@ class WolperGrid_Flann(object):
 
     def _act_to_flann(self, act):
         # Declare zero vect
-        act_v = np.zeros(self.action_size, dtype=np.float32)
+        act_v = np.zeros(self._action_size, dtype=np.float32)
 
         # Copy set line status
         line_s_f = act._set_line_status.astype(np.float32)
-        act_v[self.line_s_offset[0]:self.line_s_offset[1]] = line_s_f
+        act_v[self.line_s_off[0]:self.line_s_off[1]] = line_s_f
 
         # Copy change line status
         line_c_f = act._switch_line_status.astype(np.float32)
-        act_v[self.line_c_offset[0]:self.line_c_offset[1]] = line_c_f
-        act_v[self.line_c_offset[0]:self.line_c_offset[1]][line_c_f == 0.0] = -1.0
+        act_v[self.line_c_off[0]:self.line_c_off[1]] = line_c_f
+        act_v[self.line_c_off[0]:self.line_c_off[1]][line_c_f == 0.0] = -1.0
+
         # Copy set bus
         bus_s_f = act._set_topo_vect.astype(np.float32)
-        act_v[self.bus_s_offset[0]:self.bus_s_offset[1]][bus_s_f == 1.0] = 1.0
-        act_v[self.bus_s_offset[0]:self.bus_s_offset[1]][bus_s_f == 2.0] = -1.0
+        act_v[self.bus_s_off[0]:self.bus_s_off[1]][bus_s_f == 1.0] = 1.0
+        act_v[self.bus_s_off[0]:self.bus_s_off[1]][bus_s_f == 2.0] = -1.0
 
         # Copy change bus
         bus_c_f = act._change_bus_vect.astype(np.float32)
-        act_v[self.bus_c_offset[0]:self.bus_c_offset[1]] = bus_c_f
-        act_v[self.bus_c_offset[0]:self.bus_c_offset[1]][bus_c_f == 0.0] = -1.0
+        act_v[self.bus_c_off[0]:self.bus_c_off[1]] = bus_c_f
+        act_v[self.bus_c_off[0]:self.bus_c_off[1]][bus_c_f == 0.0] = -1.0
 
         # Dispatch linear rescale
         disp = disp_act_to_nn(self.action_space, act._redispatch)
-        act_v[-self.disp_size:] = disp
+        act_v[self.disp_off[0]:self.disp_off[1]] = disp
 
-        return act_v
+        return self._normx(act_v)
 
     @staticmethod
     def _stdmtx(X):
@@ -95,7 +103,7 @@ class WolperGrid_Flann(object):
     @staticmethod
     def _normx(X):
         norm = np.linalg.norm(X)
-        if norm < 1e-5:
+        if norm < 1.0:
             return X
         return X / norm
 
@@ -162,23 +170,24 @@ class WolperGrid_Flann(object):
         off_e += self.bins_gens
         disp = disp_act_to_nn(self.action_space, act._redispatch)
         if np.any(disp != 0.0):
-            disp_b = disp[disp != 0.0].astype(np.int32)
+            disp_b = (disp != 0.0).astype(np.int32)
             act_v[off_s:off_e] = self._vect_to_bins(self.bins_gens, disp_b)
             act_v[-1] = disp[np.where(disp != 0.0)[0][0]]
 
         #print (act_v)
-        return self._normx(act_v)
+        return self.act_v
 
     def construct_vects(self):
         print("Flann build action vectors..")
-        print("{} x {}".format(self.action_space.n, self.action_size_bin))
+        print("{} x {}".format(self.action_space.n, self.action_size))
         
         for act in self.action_space.all_actions:
-            act_v = self._act_to_flann_bin(act)
+            act_v = self._act_to_flann(act)
             # Add to list
             self._act_vects.append(act_v)
 
-        self._flann_pts = np.array(self._act_vects)
+        flann_pts = [np.array(a) for a in self._act_vects]
+        self._flann_pts = np.array(flann_pts)
         print("..Done")
         
     def construct_flann(self):
@@ -196,7 +205,6 @@ class WolperGrid_Flann(object):
 
     def load_flann(self, filename):
         bytes_filename = filename.encode()
-        self._flann_pts = np.array(self._act_vects)
         self._flann.load_index(bytes_filename, self._flann_pts)
 
     def save_flann(self, filename):
@@ -204,7 +212,8 @@ class WolperGrid_Flann(object):
         self._flann.save_index(bytes_filename)
 
     def search_flann(self, act_vect, k):
-        res, _ = self._flann.nn_index(act_vect, num_neighbors=k)
+        search_vect = np.array(act_vect)
+        res, _ = self._flann.nn_index(search_vect, num_neighbors=k)
         # Dont care about distance
         return res        
 

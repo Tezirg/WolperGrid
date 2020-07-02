@@ -1,6 +1,5 @@
 import os
 import numpy as np
-import pyflann as pf
 import tensorflow as tf
 import tensorflow.keras as tfk
 import tensorflow.keras.backend as K
@@ -9,30 +8,28 @@ import tensorflow.keras.optimizers as tfko
 import tensorflow.keras.layers as tfkl
 import tensorflow.keras.activations as tfka
 
-from wg_util import *
-
-#kernel_init1 = tfk.initializers.he_normal()
-kernel_init1 = tfk.initializers.GlorotUniform()
+kernel_init1 = tfk.initializers.he_normal()
+#kernel_init1 = tfk.initializers.GlorotUniform()
 
 class WolperGrid_NN(object):
     def __init__(self,
-                 observation_space,
-                 action_space,
+                 gridobj,
+                 observation_size,
                  proto_size,
                  learning_rate = 1e-5,
                  is_training = False):
-        self.observation_size = wg_size_obs(observation_space)
-        self.topo_size = observation_space.dim_topo
-        self.n_line = observation_space.n_line
-        self.disp_size = observation_space.n_gen
+        self.observation_size = observation_size
+        self.topo_size = gridobj.dim_topo
+        self.n_line = gridobj.n_line
+        self.disp_size = gridobj.n_gen
         self.lr = learning_rate
         self.is_training = is_training
         self.proto_size = proto_size
 
         # NN sizes
         self.input_size = self.observation_size
-        self.obs_size = 756
-        self.act_h = 512
+        self.obs_size = 2048
+        self.act_h = 1024
         self.crit_h = 1024
 
         # OAC models
@@ -109,6 +106,7 @@ class WolperGrid_NN(object):
         h2 = tf.nn.elu(h1, name="actor_elu1")
         proto = self.forward_vec(h2, self.proto_size, "actor_proto")
         proto = tf.nn.tanh(proto, name="actor_proto_tanh")
+        #proto = tf.math.sigmoid(proto, name="actor_proto_sigm")
 
         # Backwards pass
         actor_inputs = [ input_obs ]
@@ -142,7 +140,7 @@ class WolperGrid_NN(object):
                                 outputs=critic_outputs,
                                 name="critic_" + self.__class__.__name__)
         # Keras model
-        self.critic_opt = tfko.Adam(lr=self.lr)
+        self.critic_opt = tfko.Adam(lr=1e-4)
         self.critic.compile(loss="mse", optimizer=self.critic_opt)
 
     @staticmethod

@@ -11,7 +11,7 @@ class WolperGrid_Config():
     LOG_FREQ = 100
     UPDATE_FREQ = 96
     UPDATE_TARGET_HARD_FREQ = -1
-    UPDATE_TARGET_SOFT_TAU = 1e-4
+    UPDATE_TARGET_SOFT_TAU = 1e-3
     INPUT_BIAS = 0.0
     SAVE_FREQ = 100
     K = 256

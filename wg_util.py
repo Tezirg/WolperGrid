@@ -37,7 +37,7 @@ def wg_size_obs(observation_space):
     return np.sum(dims)
 
 def to_norm_vect(inputv, pad_v = 0.0, scale_v = 1.0):
-    v = np.asarray(inputv)
+    v = np.asarray(inputv).astype(np.float32)
     v = v / scale_v
     vsafe = np.nan_to_num(v, nan=pad_v, posinf=pad_v, neginf=pad_v)
     return vsafe.astype(np.float32)
@@ -63,13 +63,13 @@ def wg_convert_obs(obs, bias=0.0):
     time_line_overflow = to_norm_vect(obs.timestep_overflow, scale_v=3.0)
     time_sub_cd = to_norm_vect(obs.time_before_cooldown_sub,
                                pad_v=0.0, scale_v=12.0)
-    
+
     # Get generators info
-    g_p = to_norm_vect(obs.prod_p, scale_v=1000.0)
-    g_q = to_norm_vect(obs.prod_q, scale_v=1000.0)
-    g_v = to_norm_vect(obs.prod_v, scale_v=1000.0)
-    g_tr = to_norm_vect(obs.target_dispatch, scale_v=1000.0)
-    g_ar = to_norm_vect(obs.actual_dispatch, scale_v=1000.0)
+    g_p = to_norm_vect(obs.prod_p, scale_v=500.0)
+    g_q = to_norm_vect(obs.prod_q, scale_v=500.0)
+    g_v = to_norm_vect(obs.prod_v, scale_v=250.0)
+    g_tr = to_norm_vect(obs.target_dispatch, scale_v=500.0)
+    g_ar = to_norm_vect(obs.actual_dispatch, scale_v=500.0)
     g_cost = to_norm_vect(obs.gen_cost_per_MW, pad_v=0.0, scale_v=100.0)
     g_buses = np.zeros(obs.n_gen)
     for gen_id in range(obs.n_gen):
@@ -79,9 +79,9 @@ def wg_convert_obs(obs, bias=0.0):
     g_bus = to_norm_vect(g_buses, pad_v=0.0, scale_v=2.0)
 
     # Get loads info
-    l_p = to_norm_vect(obs.load_p, scale_v=1000.0)
-    l_q = to_norm_vect(obs.load_q, scale_v=1000.0)
-    l_v = to_norm_vect(obs.load_v, scale_v=1000.0)
+    l_p = to_norm_vect(obs.load_p, scale_v=500.0)
+    l_q = to_norm_vect(obs.load_q, scale_v=500.0)
+    l_v = to_norm_vect(obs.load_v, scale_v=250.0)
     l_buses = np.zeros(obs.n_load)
     for load_id in range(obs.n_load):
         l_buses[load_id] = topo[l_pos[load_id]] * 1.0
@@ -90,9 +90,9 @@ def wg_convert_obs(obs, bias=0.0):
     l_bus = to_norm_vect(l_buses, pad_v=0.0, scale_v=2.0)
 
     # Get lines origin info
-    or_p = to_norm_vect(obs.p_or, scale_v=1000.0)
-    or_q = to_norm_vect(obs.q_or, scale_v=1000.0)
-    or_v = to_norm_vect(obs.v_or, scale_v=1000.0)
+    or_p = to_norm_vect(obs.p_or, scale_v=500.0)
+    or_q = to_norm_vect(obs.q_or, scale_v=500.0)
+    or_v = to_norm_vect(obs.v_or, scale_v=250.0)
     or_buses = np.zeros(obs.n_line)
     for line_id in range(obs.n_line):
         or_buses[line_id] = topo[lor_pos[line_id]] * 1.0
@@ -102,9 +102,9 @@ def wg_convert_obs(obs, bias=0.0):
     or_rho = to_norm_vect(obs.rho, pad_v=0.0, scale_v=2.0)
     
     # Get extremities origin info
-    ex_p = to_norm_vect(obs.p_ex, scale_v=1000.0)
-    ex_q = to_norm_vect(obs.q_ex, scale_v=1000.0)
-    ex_v = to_norm_vect(obs.v_ex, scale_v=1000.0)
+    ex_p = to_norm_vect(obs.p_ex, scale_v=500.0)
+    ex_q = to_norm_vect(obs.q_ex, scale_v=500.0)
+    ex_v = to_norm_vect(obs.v_ex, scale_v=250.0)
     ex_buses = np.zeros(obs.n_line)
     for line_id in range(obs.n_line):
         ex_buses[line_id] = topo[lex_pos[line_id]] * 1.0
