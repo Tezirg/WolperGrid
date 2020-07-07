@@ -22,6 +22,9 @@ class WolperGrid_Config():
     ILLEGAL_GAME_OVER = False
     SIMULATE = -1
     SIMULATE_DO_NOTHING = False
+    ACTION_SET = True
+    ACTION_CHANGE = True
+    ACTION_REDISP = True
 
     @staticmethod
     def from_json(json_in_path):

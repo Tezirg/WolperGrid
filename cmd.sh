@@ -40,5 +40,7 @@ rm -rf ./logs-eval/$WG_NAME
     --verbose \
     --data_dir $WG_DATA \
     --load_dir ./models/$WG_NAME/ \
+    --load_action ./models/$WG_NAME/actions.npy \
+    --load_flann ./models/$WG_NAME/flann.index \
     --logs_dir ./logs-eval/$WG_NAME \
     --nb_episode 10

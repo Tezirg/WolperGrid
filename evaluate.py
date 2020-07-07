@@ -26,6 +26,10 @@ def cli():
                         help="Path to the dataset root directory")
     parser.add_argument("--load_dir", required=True,
                         help="The path to the actor/critic models")
+    parser.add_argument("--load_action", required=True,
+                        help="The path to the actions file")
+    parser.add_argument("--load_flann", required=True,
+                        help="The path to the flann index file")
     parser.add_argument("--logs_dir", required=False,
                         default=DEFAULT_LOGS_DIR, type=str,
                         help="Path to output logs directory") 
@@ -46,6 +50,8 @@ def cli():
 
 def evaluate(env,
              load_path=None,
+             action_path=None,
+             flann_path=None,
              logs_path=DEFAULT_LOGS_DIR,
              nb_episode=DEFAULT_NB_EPISODE,
              nb_process=DEFAULT_NB_PROCESS,
@@ -57,9 +63,12 @@ def evaluate(env,
     limit_gpu_usage()
 
     WGAgentConf.VERBOSE = verbose
-    WGAgentConf.K = 256
+    WGAgentConf.K = 512
     WGAgentConf.SIMULATE = -1
     WGAgentConf.SIMULATE_DO_NOTHING = False
+    WGConfig.ACTION_SET = True
+    WGConfig.ACTION_CHANGE = False
+    WGConfig.ACTION_REDISP = True
 
     runner_params = env.get_params_for_runner()
     runner_params["verbose"] = verbose
@@ -68,6 +77,8 @@ def evaluate(env,
     # Create agent
     agent = WGAgent(env.observation_space,
                     env.action_space,
+                    action_file=action_path,
+                    flann_file=flann_path,
                     is_training=False)
 
     # Load weights from file
@@ -126,7 +137,7 @@ if __name__ == "__main__":
     env = make(args.data_dir,
                backend=backend,
                reward_class=L2RPNSandBoxScore,
-               action_class=TopologyAction,
+               action_class=TopologyAndDispatchAction,
                other_rewards={
                    "game": GameplayReward,
                    "l2rpn": L2RPNReward,
@@ -136,6 +147,8 @@ if __name__ == "__main__":
     # Call evaluation interface
     evaluate(env,
              load_path=args.load_dir,
+             action_path=args.load_action,
+             flann_path=args.load_flann,
              logs_path=args.logs_dir,
              nb_episode=args.nb_episode,
              nb_process=args.nb_process,

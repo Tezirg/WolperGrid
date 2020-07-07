@@ -62,9 +62,11 @@ def distrib(agent_path,
     fig_lines, ax_lines = plt.subplots()
     ax_lines.hist(tree[0],
                   range=(0, ep.observation_space.n_line),
+                  align="left",
                   bins=ep.observation_space.n_line,
                   density=True)    
     ax_lines.set_xlabel('Lines')
+    ax_lines.set_xticks(np.arange(ep.observation_space.n_line))
     ax_lines.set_ylabel('Actions')
     
     plt.figure(2)
@@ -72,8 +74,10 @@ def distrib(agent_path,
     ax_subs.hist(tree[1],
                  range=(0, ep.observation_space.n_sub),
                  bins=ep.observation_space.n_sub,
+                 align="left",
                  density=True)
     ax_subs.set_xlabel('Substations')
+    ax_subs.set_xticks(np.arange(ep.observation_space.n_sub))
     ax_subs.set_ylabel('Actions')
 
 
@@ -81,9 +85,11 @@ def distrib(agent_path,
     fig_gens, ax_gens = plt.subplots()
     ax_gens.hist(tree[2],
                  range=(0, ep.observation_space.n_gen),
+                 align="left",
                  bins=ep.observation_space.n_gen,
                  density=True)
     ax_gens.set_xlabel('Generators')
+    ax_gens.set_xticks(np.arange(ep.observation_space.n_gen))
     ax_gens.set_ylabel('Actions')
 
     plt.show()

@@ -106,18 +106,42 @@ class WolperGrid(AgentWithConverter):
 
     def _filter_action(self, action):
         act_dict = action.impact_on_objects()
+
+        # Filter based on action type
+        if not cfg.ACTION_SET: # Filter out set actions
+            if len(act_dict["topology"]["assigned_bus"]) > 0:
+                return False
+            if act_dict["force_line"]["reconnections"]["count"] > 0:
+                return False
+            if act_dict["force_line"]["disconnections"]["count"] > 0:
+                return False
+
+        if not cfg.ACTION_CHANGE: # Filter out change actions
+            if len(act_dict["topology"]["bus_switch"]) > 0:
+                return False
+            if act_dict["switch_line"]["count"] > 0:
+                return False
+
+        if not cfg.ACTION_REDISP: # Filter out redispatch actions
+            if act_dict["redispatch"]["changed"]:
+                return False
+
+        # Custom subs exclude
+        exclude_subs = [48]
         if len(act_dict["topology"]["bus_switch"]) > 0:
             for d in act_dict["topology"]["bus_switch"]:
-                if d["substation"] == 16:
+                if d["substation"] in exclude_subs:
                     return False
         if len(act_dict["topology"]["assigned_bus"]) > 0:
             for d in act_dict["topology"]["assigned_bus"]:
-                if d["substation"] == 16:
+                if d["substation"] in exclude_subs:
                     return False
         if len(act_dict["topology"]["disconnect_bus"]) > 0:
             for d in act_dict["topology"]["disconnect_bus"]:
-                if d["substation"] == 16:
+                if d["substation"] in exclude_subs:
                     return False
+
+        # Not filtered, keep it
         return True
 
     def _reset_state(self, current_obs):
@@ -167,7 +191,12 @@ class WolperGrid(AgentWithConverter):
     def load(self, path):
         self.Qmain.load_network(path)
         if self.is_training:
-            self.Qmain.update_target_hard(self.Qtarget.model)
+            WolperGrid_NN.update_target_hard(self.Qmain.obs,
+                                             self.Qtarget.obs)
+            WolperGrid_NN.update_target_hard(self.Qmain.actor,
+                                             self.Qtarget.actor)
+            WolperGrid_NN.update_target_hard(self.Qmain.critic,
+                                             self.Qtarget.critic)
 
     def save(self, path):
         self.Qmain.save_network(path)
@@ -293,11 +322,12 @@ class WolperGrid(AgentWithConverter):
             lx = len(x)
             s = np.random.choice(lx, size=lx, replace=False)
             return x[s]
-        env.chronics_handler.shuffle(shuffler=shuff)
+        for mix in env:
+            mix.chronics_handler.shuffle(shuffler=shuff)
         
         # Training loop, over M episodes
         for m in range(iterations):
-            init_obs = env.reset() # This shouldn't raise
+            init_obs = env.reset(random=True) # This shouldn't raise
             self.reset(init_obs)
 
             # Enter episode

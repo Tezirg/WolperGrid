@@ -140,7 +140,7 @@ class WolperGrid_NN(object):
                                 outputs=critic_outputs,
                                 name="critic_" + self.__class__.__name__)
         # Keras model
-        self.critic_opt = tfko.Adam(lr=1e-4)
+        self.critic_opt = tfko.Adam(lr=self.lr)
         self.critic.compile(loss="mse", optimizer=self.critic_opt)
 
     @staticmethod
