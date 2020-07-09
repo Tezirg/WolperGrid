@@ -16,7 +16,8 @@ class WolperGrid_Config():
     SAVE_FREQ = 100
     K = 256
     BATCH_SIZE = 32
-    LR = 1e-4
+    LR_ACTOR = 1e-5
+    LR_CRITIC = 1e-4
     GRADIENT_CLIP = False
     VERBOSE = True
     ILLEGAL_GAME_OVER = False

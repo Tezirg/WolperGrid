@@ -4,6 +4,7 @@ import copy
 import numpy as np
 import tensorflow as tf
 import tree
+import pandas as pd
 
 from grid2op.Agent import AgentWithConverter
 from grid2op.Converter import IdToAct
@@ -48,7 +49,6 @@ class WolperGrid(AgentWithConverter):
         self.name = name
         self.batch_size = cfg.BATCH_SIZE
         self.is_training = is_training
-        self.lr = cfg.LR
 
         # Declare required vars
         self.Qmain = None
@@ -66,7 +66,6 @@ class WolperGrid(AgentWithConverter):
         self.Qmain = WolperGrid_NN(self.action_space,
                                    self.observation_size,
                                    self.flann.action_size,
-                                   learning_rate = cfg.LR,
                                    is_training = self.is_training)
 
         # Setup training vars if needed
@@ -91,7 +90,6 @@ class WolperGrid(AgentWithConverter):
         self.Qtarget = WolperGrid_NN(self.action_space,
                                      self.observation_size,
                                      self.flann.action_size,
-                                     learning_rate = self.lr,
                                      is_training = self.is_training)
         WolperGrid_NN.update_target_hard(self.Qmain.obs,
                                          self.Qtarget.obs)
@@ -154,7 +152,8 @@ class WolperGrid(AgentWithConverter):
         r_instance = env.reward_helper.template_reward
         hp = {
             "episodes": iters,
-            "lr": cfg.LR,
+            "lr_actor": cfg.LR_ACTOR,
+            "lr_critic": cfg.LR_CRITIC,
             "batch_size": cfg.BATCH_SIZE,
             "e_start": cfg.INITIAL_EPSILON,
             "e_end": cfg.FINAL_EPSILON,
@@ -428,7 +427,7 @@ class WolperGrid(AgentWithConverter):
 
         return k_acts[0], Q
 
-    def predict_move(self, data, use_target=False):
+    def predict_move(self, data, use_target=False, batch_dbg=-1):
         input_shape = (1, self.observation_size)
         data_input = data.reshape(input_shape)
         obs_input = [data_input]
@@ -477,12 +476,17 @@ class WolperGrid(AgentWithConverter):
                 if r_test > r:
                     act_index = 0
 
-        #if self.steps > 50000:
-        #    print("----")
-        #    print("Action vect = ", self.flann[act_index])
-        #    print("Action str =", self.convert_act(act_index))
-        #    print("Action proto = ", proto)
-        #    print("----")
+        if batch_dbg == 0 and self.steps % (cfg.UPDATE_FREQ * 10) == 0:
+            pd_dbg = pd.DataFrame(np.array([
+                proto.numpy()[0],
+                self.flann[act_index],
+            ]),
+            index=[
+                "proto_{}_{}".format(self.steps, use_target),
+                "flann_{}_{}".format(self.steps, use_target)
+            ])
+            pd_dbg.to_csv('flann_dbg.csv', mode='a', header=False)
+
         return act_index
 
     def random_move(self, data):
@@ -509,7 +513,7 @@ class WolperGrid(AgentWithConverter):
         t1_a = []
         for i in range(self.batch_size):
             data = np.array(batch[4][i])
-            a = self.predict_move(data, use_target=True)
+            a = self.predict_move(data, use_target=True, batch_dbg=i)
             t1_a.append(self.flann[a])
         t1_a = np.array(t1_a)
 
@@ -543,7 +547,7 @@ class WolperGrid(AgentWithConverter):
             # Gradient clip if enabled
             if cfg.GRADIENT_CLIP:
                 dqda = tf.clip_by_norm(dqda, 1.0, axes=-1)
-            target_a = dqda + t1_a
+            target_a = dqda + dpg_t_a
             target_a = tf.stop_gradient(target_a)
             target_sq = tf.square(target_a - dpg_t_a)
             loss_act = 0.5 * tf.reduce_sum(target_sq, axis=-1)
@@ -566,6 +570,21 @@ class WolperGrid(AgentWithConverter):
         if cfg.GRADIENT_CLIP:
             actor_grads = tf.clip_by_global_norm(actor_grads, grad_clip)[0]
             crit_grads = tf.clip_by_global_norm(crit_grads, grad_clip)[0]
+
+        if self.steps % (cfg.UPDATE_FREQ * 10) == 0:
+            pd_dbg = pd.DataFrame(np.array([
+                dqda[0].numpy(),
+                dpg_t_a[0].numpy(),
+                t1_a[0],
+                actor_grads[-1].numpy()
+            ]),
+            index=[
+                "dqda_{}".format(self.steps),
+                "dpg_t_a_{}".format(self.steps),
+                "t1_a_{}".format(self.steps),
+                "grads_{}".format(self.steps)
+            ])
+            pd_dbg.to_csv('ddpg_dbg.csv', mode='a', header=False)
 
         self.Qmain.actor_opt.apply_gradients(zip(actor_grads, actor_vars))
         self.Qmain.critic_opt.apply_gradients(zip(crit_grads, crit_vars))

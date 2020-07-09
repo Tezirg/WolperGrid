@@ -8,29 +8,23 @@ import tensorflow.keras.optimizers as tfko
 import tensorflow.keras.layers as tfkl
 import tensorflow.keras.activations as tfka
 
-kernel_init1 = tfk.initializers.he_normal()
-#kernel_init1 = tfk.initializers.GlorotUniform()
+from WolperGrid_Config import WolperGrid_Config as cfg
+#kernel_init1 = tfk.initializers.he_normal()
+kernel_init1 = tfk.initializers.GlorotUniform()
 
 class WolperGrid_NN(object):
     def __init__(self,
                  gridobj,
                  observation_size,
                  proto_size,
-                 learning_rate = 1e-5,
                  is_training = False):
-        self.observation_size = observation_size
+        self.input_size = observation_size
         self.topo_size = gridobj.dim_topo
         self.n_line = gridobj.n_line
         self.disp_size = gridobj.n_gen
-        self.lr = learning_rate
         self.is_training = is_training
         self.proto_size = proto_size
-
-        # NN sizes
-        self.input_size = self.observation_size
         self.obs_size = 2048
-        self.act_h = 1024
-        self.crit_h = 1024
 
         # OAC models
         self.obs = None
@@ -77,21 +71,61 @@ class WolperGrid_NN(object):
                          name=name+"_fc3_vec")(vec_2)
         return vec
 
+    def construct_mlp(self,
+                      layer_in,
+                      layer_sizes,
+                      name="mlp",
+                      activation=tf.nn.relu,
+                      activation_final=None):
+        layer = layer_in
+        for i, size in enumerate(layer_sizes[:-1]):
+            layer_name = "{}-fc-{}".format(name, i + 1)
+            layer = tfkl.Dense(size, kernel_initializer=kernel_init1,
+                               name=layer_name)(layer)
+            # Add activation if provided
+            if activation is not None:
+                activation_name = "{}-act-{}".format(name, i + 1)
+                layer = activation(layer, name=activation_name)
+
+        # Final layer
+        layer_name = "{}-fc-{}".format(name, "final")
+        layer_final = tfkl.Dense(layer_sizes[-1],
+                                 kernel_initializer=kernel_init1,
+                                 name=layer_name)(layer)
+        if activation_final is not None:
+            activation_name = "{}-act-{}".format(name, "final")
+            layer_final = activation(layer_final, name=activation_name)
+
+        # Return final
+        return layer_final            
+        
     def construct_wg_obs(self):
         input_shape = (self.input_size,)
         input_obs = tfk.Input(dtype=tf.float32,
                               shape=input_shape,
                               name='input_obs')
-        
-        h1 = self.forward_encode(input_obs, self.obs_size, "obs_enc")
-        output_obs = tf.nn.elu(h1, name="obs_elu1")
+
+        layer_n = 8
+        layer_idxs = np.arange(layer_n)
+        layer_range = [0, layer_n - 1]
+        size_range = [
+            self.input_size,
+            self.obs_size
+        ]
+        sizes_np = np.interp(layer_idxs, layer_range, size_range)
+        sizes = list(sizes_np)
+        output_obs = self.construct_mlp(input_obs,
+                                        sizes,
+                                        name="obs",
+                                        activation=tf.nn.tanh,
+                                        activation_final=tf.nn.tanh)
 
         obs_inputs = [input_obs]
         obs_outputs = [output_obs]
         self.obs = tfk.Model(inputs=obs_inputs,
                              outputs=obs_outputs,
                              name="obs_"  + self.__class__.__name__)
-        self.obs_opt = tfko.Adam(lr=self.lr)
+        self.obs_opt = tfko.Adam(lr=cfg.LR_ACTOR)
         self.obs.compile(loss="mse", optimizer=self.obs_opt)
 
     def construct_wg_actor(self):
@@ -102,19 +136,28 @@ class WolperGrid_NN(object):
                               name='actor_obs')
 
         # Forward encode
-        h1 = self.forward_encode(input_obs, self.act_h, "actor_encode1")
-        h2 = tf.nn.elu(h1, name="actor_elu1")
-        proto = self.forward_vec(h2, self.proto_size, "actor_proto")
-        proto = tf.nn.tanh(proto, name="actor_proto_tanh")
-        #proto = tf.math.sigmoid(proto, name="actor_proto_sigm")
-
+        layer_n = 16
+        layer_idxs = np.arange(layer_n)
+        layer_range = [0, layer_n - 1]
+        size_range = [
+            self.obs_size,
+            self.proto_size
+        ]
+        sizes_np = np.interp(layer_idxs, layer_range, size_range)
+        sizes = list(sizes_np)
+        proto = self.construct_mlp(input_obs,
+                                   sizes,
+                                   name="actor",
+                                   activation=tf.nn.tanh,
+                                   activation_final=tf.nn.relu)
+    
         # Backwards pass
         actor_inputs = [ input_obs ]
         actor_outputs = [ proto ]
         self.actor = tfk.Model(inputs=actor_inputs,
                                outputs=actor_outputs,
                                name="actor_" + self.__class__.__name__)
-        self.actor_opt = tfko.Adam(lr=self.lr)
+        self.actor_opt = tfko.Adam(lr=cfg.LR_ACTOR)
         self.actor.compile(loss="mse", optimizer=self.actor_opt)
 
     def construct_wg_critic(self):
@@ -129,9 +172,20 @@ class WolperGrid_NN(object):
 
         input_concat = tf.concat([input_obs, input_proto], axis=-1,
                                  name="critic_concat")
-        h1 = self.forward_encode(input_concat, self.crit_h, "critic_enc1")
-        h2 = tf.nn.elu(h1, name="critic_elu1")
-        Q = self.forward_vec(h2, 1, "critic_Q")
+        layer_n = 16
+        layer_idxs = np.arange(layer_n)
+        layer_range = [0, layer_n // 2, layer_n - 1]
+        size_range = [
+            self.obs_size + self.proto_size,
+            (self.obs_size + self.proto_size) // 2,
+            1
+        ]
+        sizes_np = np.interp(layer_idxs, layer_range, size_range)
+        sizes = list(sizes_np)
+        Q = self.construct_mlp(input_concat,
+                               sizes,
+                               name="critic",
+                               activation=tf.nn.elu)
 
         # Backwards pass
         critic_inputs = [ input_obs, input_proto ]
@@ -140,7 +194,7 @@ class WolperGrid_NN(object):
                                 outputs=critic_outputs,
                                 name="critic_" + self.__class__.__name__)
         # Keras model
-        self.critic_opt = tfko.Adam(lr=self.lr)
+        self.critic_opt = tfko.Adam(lr=cfg.LR_CRITIC)
         self.critic.compile(loss="mse", optimizer=self.critic_opt)
 
     @staticmethod

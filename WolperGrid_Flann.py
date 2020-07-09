@@ -28,10 +28,12 @@ class WolperGrid_Flann(object):
             flann_diff.append(np.full(self.n_line, 10.0, dtype=np.float32))
 
         if cfg.ACTION_CHANGE:
-            self._action_size += self.n_line
+            self._action_size += self.n_line * 2
             self.act_offset.append(self.act_offset[-1])
-            self.act_offset.append(self.act_offset[-1] + self.n_line)
-
+            self.act_offset.append(self.act_offset[-1] + self.n_line * 2)
+            line_idx = np.arange(self.n_line * 2)
+            self.c_line0 = line_idx[line_idx % 2 == 0]
+            self.c_line1 = line_idx[line_idx % 2 == 1]
             flann_diff.append(np.full(self.n_line, 10.0, dtype=np.float32))
 
         if cfg.ACTION_SET:
@@ -42,10 +44,12 @@ class WolperGrid_Flann(object):
             flann_diff.append(np.full(self.topo_size, 100.0, dtype=np.float32))
 
         if cfg.ACTION_CHANGE:
-            self._action_size += self.topo_size
+            self._action_size += self.topo_size * 2
             self.act_offset.append(self.act_offset[-1])
-            self.act_offset.append(self.act_offset[-1] + self.topo_size)
-
+            self.act_offset.append(self.act_offset[-1] + self.topo_size * 2)
+            bus_idx = np.arange(self.topo_size * 2)
+            self.c_bus0 = bus_idx[bus_idx % 2 == 0]
+            self.c_bus1 = bus_idx[bus_idx % 2 == 1]
             flann_diff.append(np.full(self.topo_size, 100.0, dtype=np.float32))
 
         if cfg.ACTION_REDISP:
@@ -84,9 +88,9 @@ class WolperGrid_Flann(object):
         if cfg.ACTION_CHANGE: # Copy change line status
             act_s = self.act_offset[off_s]
             act_e = self.act_offset[off_e] 
-            line_c_f = act._switch_line_status.astype(np.float32)
-            act_v[act_s:act_e] = line_c_f
-            act_v[act_s:act_e][line_c_f == 0.0] = -1.0
+            line_c = act._switch_line_status.astype(int)
+            act_v[act_s:act_e][self.c_line0] = (line_c == 0).astype(np.float32)
+            act_v[act_s:act_e][self.c_line1] = (line_c == 1).astype(np.float32)
             off_s += 2
             off_e += 2
 
@@ -101,10 +105,10 @@ class WolperGrid_Flann(object):
 
         if cfg.ACTION_CHANGE: # Copy change bus
             act_s = self.act_offset[off_s]
-            act_e = self.act_offset[off_e] 
-            bus_c_f = act._change_bus_vect.astype(np.float32)
-            act_v[act_s:act_e] = bus_c_f
-            act_v[act_s:act_e][bus_c_f == 0.0] = -1.0
+            act_e = self.act_offset[off_e]
+            bus_c = act._change_bus_vect.astype(int)
+            act_v[act_s:act_e][self.c_bus0] = (bus_c == 0).astype(np.float32)
+            act_v[act_s:act_e][self.c_bus1] = (bus_c == 1).astype(np.float32)
             off_s += 2
             off_e += 2
 
@@ -114,7 +118,7 @@ class WolperGrid_Flann(object):
             disp = disp_act_to_nn(self.action_space, act._redispatch)
             act_v[act_s:act_e] = disp
 
-        return act_v
+        return self._normx(act_v)
 
     @staticmethod
     def _normx(X):
@@ -133,8 +137,8 @@ class WolperGrid_Flann(object):
             self._act_vects.append(act_v)
 
         flann_pts = [np.array(a) for a in self._act_vects]
-        self._flann_pts = np.array(flann_pts) * self.flann_diff
-        print("{} ..Done", self._flann_pts.shape)
+        self._flann_pts = np.array(flann_pts)# * self.flann_diff
+        print("{} ..Done".format(self._flann_pts.shape))
         
     def construct_flann(self):
         print("Flann build tree..")
@@ -157,7 +161,7 @@ class WolperGrid_Flann(object):
         self._flann.save_index(bytes_filename)
 
     def search_flann(self, act_vect, k):
-        search_vect = np.array(act_vect) * self.flann_diff
+        search_vect = np.array(act_vect)# * self.flann_diff
         res, _ = self._flann.nn_index(search_vect, num_neighbors=k)
         # Dont care about distance
         return res        
