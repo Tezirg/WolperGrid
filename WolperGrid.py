@@ -539,8 +539,8 @@ class WolperGrid(AgentWithConverter):
             loss_c = 0.5 * tf.square(td_err)
             loss_critic = tf.math.reduce_mean(loss_c, axis=0)
 
-            dpg_t_a = self.Qmain.actor([t1_O])
-            dpg_t_q = self.Qmain.critic([t1_O, dpg_t_a])
+            dpg_t_a = self.Qmain.actor([t_O])
+            dpg_t_q = self.Qmain.critic([t_O, dpg_t_a])
             # DPG / gradient sample
             # github.com/deepmind/acme/blob/master/acme/tf/losses/dpg.py
             dqda = tape.gradient([dpg_t_q], [dpg_t_a])[0]

@@ -10,7 +10,7 @@ from grid2op.Reward import *
 from grid2op.Action import *
 
 from WolperGrid import WolperGrid as WGAgent
-from WolperGrid_Config import WolperGrid_Config as WGAgentConf
+from WolperGrid_Config import WolperGrid_Config as WGConfig
 from l2rpn_baselines.utils.save_log_gif import save_log_gif
 from wg_util import limit_gpu_usage
 
@@ -29,6 +29,10 @@ def cli():
     parser.add_argument("--logs_dir", required=False,
                         default=DEFAULT_LOGS_DIR, type=str,
                         help="Path to output logs directory") 
+    parser.add_argument("--load_action", required=True,
+                        help="The path to the actions file")
+    parser.add_argument("--load_flann", required=True,
+                        help="The path to the flann index file")
     parser.add_argument("--nb_episode", required=False,
                         default=DEFAULT_NB_EPISODE, type=int,
                         help="Number of episodes to evaluate")
@@ -46,6 +50,8 @@ def cli():
 
 def evaluate(env,
              load_path=None,
+             action_path=None,
+             flann_path=None,
              logs_path=DEFAULT_LOGS_DIR,
              nb_episode=DEFAULT_NB_EPISODE,
              nb_process=DEFAULT_NB_PROCESS,
@@ -53,17 +59,19 @@ def evaluate(env,
              verbose=DEFAULT_VERBOSE,
              save_gif=False):
 
-    # Limit gpu usage
-    limit_gpu_usage()
-
-    WGAgentConf.VERBOSE = verbose
-    WGAgentConf.K_RATIO = 256.0/134163.0
-    WGAgentConf.SIMULATE = -1
-    WGAgentConf.SIMULATE_DO_NOTHING = False
+    WGConfig.VERBOSE = verbose
+    WGConfig.K = 512
+    WGConfig.SIMULATE = -1
+    WGConfig.SIMULATE_DO_NOTHING = False
+    WGConfig.ACTION_SET = False
+    WGConfig.ACTION_CHANGE = True
+    WGConfig.ACTION_REDISP = True
 
     # Create agent
     agent = WGAgent(env.observation_space,
                     env.action_space,
+                    action_file=action_path,
+                    flann_file=flann_path,
                     is_training=False)
 
     # Load weights from file
@@ -113,6 +121,9 @@ if __name__ == "__main__":
     # Parse command line
     args = cli()
 
+    # Limit gpu usage
+    limit_gpu_usage()
+
     # Try to use faster simulator
     try:
         from lightsim2grid.LightSimBackend import LightSimBackend
@@ -126,16 +137,18 @@ if __name__ == "__main__":
     env = MultiMixEnvironment(args.data_dir,
                               backend=backend,
                               reward_class=L2RPNSandBoxScore,
-                              action_class=TopologyAction,
+                              action_class=TopologyAndDispatchAction,
                               other_rewards={
                                   "game": GameplayReward,
                                   "l2rpn": L2RPNReward,
                                   "overflow": CloseToOverflowReward,
-                                  "wcci_score": L2RPNSandBoxScore
+                                  "tmp_score": L2RPNSandBoxScore
                               })
     # Call evaluation interface
     evaluate(env,
              load_path=args.load_dir,
+             action_path=args.load_action,
+             flann_path=args.load_flann,
              logs_path=args.logs_dir,
              nb_episode=args.nb_episode,
              nb_process=args.nb_process,

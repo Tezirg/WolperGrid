@@ -118,7 +118,7 @@ class WolperGrid_Flann(object):
             disp = disp_act_to_nn(self.action_space, act._redispatch)
             act_v[act_s:act_e] = disp
 
-        return self._normx(act_v)
+        return act_v
 
     @staticmethod
     def _normx(X):
@@ -145,7 +145,7 @@ class WolperGrid_Flann(object):
         pf.set_distance_type("euclidean")
         self._flann.build_index(self._flann_pts,
                                 algorithm="kmeans",
-                                iterations=7,
+                                iterations=11,
                                 cb_index=0.5,
                                 centers_init="kmeanspp",
                                 branching=32,

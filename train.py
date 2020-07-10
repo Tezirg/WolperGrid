@@ -12,7 +12,7 @@ from WolperGrid import WolperGrid as WGAgent
 from WolperGrid_Config import WolperGrid_Config as WGConfig
 from wg_util import limit_gpu_usage
 
-DEFAULT_NAME = "WolpGrid"
+DEFAULT_NAME = "WolperGrid"
 DEFAULT_SAVE_DIR = "./models"
 DEFAULT_LOG_DIR = "./logs-train"
 DEFAULT_EPISODES = 10
@@ -21,7 +21,7 @@ DEFAULT_LR = 2e-5
 DEFAULT_VERBOSE = True
 
 def cli():
-    parser = argparse.ArgumentParser(description="Train baseline GridRDQN")
+    parser = argparse.ArgumentParser(description="Train baseline WolperGrid")
 
     # Paths
     parser.add_argument("--name", required=False, default=DEFAULT_NAME,
@@ -77,10 +77,10 @@ def train(env,
     WGConfig.VERBOSE = verbose
     WGConfig.INITIAL_EPSILON = 1.0
     WGConfig.FINAL_EPSILON = 0.001
-    WGConfig.DECAY_EPSILON = 25000
+    WGConfig.DECAY_EPSILON = 5000
     WGConfig.UNIFORM_EPSILON = True
     WGConfig.K = 128
-    WGConfig.UPDATE_FREQ = 128
+    WGConfig.UPDATE_FREQ = 32
     WGConfig.ILLEGAL_GAME_OVER = False
     WGConfig.SIMULATE = -1
     WGConfig.SIMULATE_DO_NOTHING = False
@@ -89,9 +89,6 @@ def train(env,
     WGConfig.ACTION_SET = False
     WGConfig.ACTION_CHANGE = True
     WGConfig.ACTION_REDISP = True
-
-    # Limit gpu usage
-    limit_gpu_usage()
 
     agent = WGAgent(env.observation_space,
                     env.action_space,
@@ -110,6 +107,9 @@ def train(env,
 
 if __name__ == "__main__":
     args = cli()
+
+    # Limit gpu usage
+    limit_gpu_usage()
 
     try:
         from lightsim2grid.LightSimBackend import LightSimBackend
@@ -131,30 +131,29 @@ if __name__ == "__main__":
                    "overflow": CloseToOverflowReward
                })
 
-    for mix in env:
-        # Do not load entires scenario at once
-        # (faster exploration)
-        mix.set_chunk_size(256)
+    # Do not load entires scenario at once
+    # (faster exploration)
+    env.set_chunk_size(256)
 
-        # Register custom reward for training
-        cr = mix.reward_helper.template_reward
-        #cr.addReward("bridge", BridgeReward(), 1.0)
-        #cr.addReward("distance", DistanceReward(), 1.0)
-        #cr.addReward("overflow", CloseToOverflowReward(), 1.0)
-        gp = GameplayReward()
-        gp.set_range(-10.0, 1.0)
-        cr.addReward("game", gp, 1.0)
-        #cr.addReward("eco", EconomicReward(), 2.0)
-        reco = LinesReconnectedReward()
-        reco.set_range(0.0, 1.0)
-        cr.addReward("reco", reco, 1.0)
-        l2 = L2RPNReward()
-        l2.set_range(0.0, env.n_line)
-        cr.addReward("l2rpn", l2, 1.0 / env.n_line)
-        #cr.addReward("flat", IncreasingFlatReward(), 1.0 / 8063.0)
-        cr.set_range(-10.0, 3.0)
-        # Initialize custom rewards
-        cr.initialize(mix)
+    # Register custom reward for training
+    cr = env.reward_helper.template_reward
+    #cr.addReward("bridge", BridgeReward(), 1.0)
+    #cr.addReward("distance", DistanceReward(), 1.0)
+    #cr.addReward("overflow", CloseToOverflowReward(), 1.0)
+    gp = GameplayReward()
+    gp.set_range(-10.0, 1.0)
+    cr.addReward("game", gp, 1.0)
+    #cr.addReward("eco", EconomicReward(), 2.0)
+    reco = LinesReconnectedReward()
+    reco.set_range(0.0, 1.0)
+    cr.addReward("reco", reco, 1.0)
+    l2 = L2RPNReward()
+    l2.set_range(0.0, env.n_line)
+    cr.addReward("l2rpn", l2, 1.0 / env.n_line)
+    #cr.addReward("flat", IncreasingFlatReward(), 1.0 / 8063.0)
+    cr.set_range(-10.0, 3.0)
+    # Initialize custom rewards
+    cr.initialize(env)
 
     train(env,
           name = args.name,

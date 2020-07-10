@@ -66,8 +66,8 @@ def evaluate(env,
     WGAgentConf.K = 512
     WGAgentConf.SIMULATE = -1
     WGAgentConf.SIMULATE_DO_NOTHING = False
-    WGConfig.ACTION_SET = True
-    WGConfig.ACTION_CHANGE = False
+    WGConfig.ACTION_SET = False
+    WGConfig.ACTION_CHANGE = True
     WGConfig.ACTION_REDISP = True
 
     runner_params = env.get_params_for_runner()
@@ -142,7 +142,7 @@ if __name__ == "__main__":
                    "game": GameplayReward,
                    "l2rpn": L2RPNReward,
                    "overflow": CloseToOverflowReward,
-                   "wcci_score": L2RPNSandBoxScore
+                   "tmp_score": L2RPNSandBoxScore
                })
     # Call evaluation interface
     evaluate(env,
