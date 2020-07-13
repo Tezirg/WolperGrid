@@ -57,7 +57,7 @@ class WolperGrid_NN(object):
         layer_final = tfkl.Dense(layer_sizes[-1], name=layer_name)(layer)
         if activation_final is not None:
             activation_name = "{}-act-{}".format(name, "final")
-            layer_final = activation(layer_final, name=activation_name)
+            layer_final = activation_final(layer_final, name=activation_name)
 
         # Return final
         return layer_final            
@@ -115,7 +115,7 @@ class WolperGrid_NN(object):
                                    sizes,
                                    name="actor",
                                    activation=tf.nn.elu,
-                                   activation_final=tf.nn.elu)
+                                   activation_final=tf.math.sigmoid)
     
         # Backwards pass
         actor_inputs = [ input_obs ]
