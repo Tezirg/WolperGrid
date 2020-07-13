@@ -4,7 +4,7 @@ import os
 import argparse
 import tensorflow as tf
 
-from grid2op.Environment import MultiMixEnvironment
+import grid2op
 from grid2op.Runner import Runner
 from grid2op.Reward import *
 from grid2op.Action import *
@@ -60,7 +60,7 @@ def evaluate(env,
              save_gif=False):
 
     WGConfig.VERBOSE = verbose
-    WGConfig.K = 512
+    WGConfig.K = 2048
     WGConfig.SIMULATE = -1
     WGConfig.SIMULATE_DO_NOTHING = False
     WGConfig.ACTION_SET = False
@@ -134,16 +134,16 @@ if __name__ == "__main__":
         backend = PandaPowerBackend()
 
     # Create dataset env
-    env = MultiMixEnvironment(args.data_dir,
-                              backend=backend,
-                              reward_class=L2RPNSandBoxScore,
-                              action_class=TopologyAndDispatchAction,
-                              other_rewards={
-                                  "game": GameplayReward,
-                                  "l2rpn": L2RPNReward,
-                                  "overflow": CloseToOverflowReward,
-                                  "tmp_score": L2RPNSandBoxScore
-                              })
+    env = grid2op.make(args.data_dir,
+                       backend=backend,
+                       reward_class=L2RPNSandBoxScore,
+                       action_class=TopologyAndDispatchAction,
+                       other_rewards={
+                           "game": GameplayReward,
+                           "l2rpn": L2RPNReward,
+                           "overflow": CloseToOverflowReward,
+                           "tmp_score": L2RPNSandBoxScore
+                       })
     # Call evaluation interface
     evaluate(env,
              load_path=args.load_dir,

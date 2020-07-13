@@ -9,8 +9,6 @@ import tensorflow.keras.layers as tfkl
 import tensorflow.keras.activations as tfka
 
 from WolperGrid_Config import WolperGrid_Config as cfg
-#kernel_init1 = tfk.initializers.he_normal()
-kernel_init1 = tfk.initializers.GlorotUniform()
 
 class WolperGrid_NN(object):
     def __init__(self,
@@ -24,9 +22,14 @@ class WolperGrid_NN(object):
         self.disp_size = gridobj.n_gen
         self.is_training = is_training
         self.proto_size = proto_size
-        self.obs_size = 2048
 
-        # OAC models
+        self.obs_nn = False
+        if self.obs_nn == True:
+            self.obs_size = 2048
+        else:
+            self.obs_size = self.input_size
+
+        # AC models
         self.obs = None
         self.actor = None
         self.critic = None
@@ -43,8 +46,7 @@ class WolperGrid_NN(object):
         layer = layer_in
         for i, size in enumerate(layer_sizes[:-1]):
             layer_name = "{}-fc-{}".format(name, i + 1)
-            layer = tfkl.Dense(size, kernel_initializer=kernel_init1,
-                               name=layer_name)(layer)
+            layer = tfkl.Dense(size, name=layer_name)(layer)
             # Add activation if provided
             if activation is not None:
                 activation_name = "{}-act-{}".format(name, i + 1)
@@ -52,9 +54,7 @@ class WolperGrid_NN(object):
 
         # Final layer
         layer_name = "{}-fc-{}".format(name, "final")
-        layer_final = tfkl.Dense(layer_sizes[-1],
-                                 kernel_initializer=kernel_init1,
-                                 name=layer_name)(layer)
+        layer_final = tfkl.Dense(layer_sizes[-1], name=layer_name)(layer)
         if activation_final is not None:
             activation_name = "{}-act-{}".format(name, "final")
             layer_final = activation(layer_final, name=activation_name)
@@ -68,8 +68,7 @@ class WolperGrid_NN(object):
                               shape=input_shape,
                               name='input_obs')
 
-        obs_nn = True
-        if obs_nn:
+        if self.obs_nn:
             layer_n = 8
             layer_idxs = np.arange(layer_n)
             layer_range = [0, layer_n - 1]
@@ -85,7 +84,7 @@ class WolperGrid_NN(object):
                                             activation=tf.nn.elu,
                                             activation_final=tf.nn.elu)
         else:
-            output_obs = tfka.linear(input_obs, name="obs-linear")
+            output_obs = tfka.linear(input_obs)
 
         obs_inputs = [input_obs]
         obs_outputs = [output_obs]
@@ -115,7 +114,8 @@ class WolperGrid_NN(object):
         proto = self.construct_mlp(input_obs,
                                    sizes,
                                    name="actor",
-                                   activation=tf.nn.elu)
+                                   activation=tf.nn.elu,
+                                   activation_final=tf.nn.elu)
     
         # Backwards pass
         actor_inputs = [ input_obs ]

@@ -2,6 +2,7 @@
 
 import argparse
 import tensorflow as tf
+import numpy as np
 
 import grid2op
 from grid2op.Reward import *
@@ -86,7 +87,7 @@ def train(env,
     WGConfig.SIMULATE = -1
     WGConfig.SIMULATE_DO_NOTHING = False
     WGConfig.DISCOUNT_FACTOR = 0.97
-    WGConfig.REPLAY_BUFFER_SIZE = 1024*84
+    WGConfig.REPLAY_BUFFER_SIZE = 1024*128
     WGConfig.ACTION_SET = False
     WGConfig.ACTION_CHANGE = True
     WGConfig.ACTION_REDISP = True
@@ -147,8 +148,8 @@ if __name__ == "__main__":
         #cr.addReward("distance", DistanceReward(), 1.0)
         #cr.addReward("overflow", CloseToOverflowReward(), 1.0)
         gp = GameplayReward()
-        gp.set_range(-4.0, 1.0)
-        cr.addReward("game", gp, 1.5)
+        gp.set_range(-4.0, 1.5)
+        cr.addReward("game", gp, 1.0)
         #cr.addReward("eco", EconomicReward(), 2.0)
         reco = LinesReconnectedReward()
         reco.set_range(-1.0, 2.5)
@@ -160,6 +161,13 @@ if __name__ == "__main__":
         cr.set_range(-1.0, 1.0)
         # Initialize custom rewards
         cr.initialize(mix)
+
+        # Shuffle training data
+        def shuff(x):
+            lx = len(x)
+            s = np.random.choice(lx, size=lx, replace=False)
+            return x[s]
+        mix.chronics_handler.shuffle(shuffler=shuff)
 
     train(env,
           name = args.name,

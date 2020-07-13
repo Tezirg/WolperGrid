@@ -2,6 +2,7 @@
 
 import argparse
 import tensorflow as tf
+import numpy as np
 
 from grid2op.MakeEnv import make
 from grid2op.Reward import *
@@ -16,8 +17,8 @@ DEFAULT_NAME = "WolperGrid"
 DEFAULT_SAVE_DIR = "./models"
 DEFAULT_LOG_DIR = "./logs-train"
 DEFAULT_EPISODES = 10
-DEFAULT_BATCH_SIZE = 64
-DEFAULT_LR = 2e-5
+DEFAULT_BATCH_SIZE = 32
+DEFAULT_LR = 1e-5
 DEFAULT_VERBOSE = True
 
 def cli():
@@ -49,7 +50,7 @@ def cli():
                         help="Number of training iterations")
     parser.add_argument("--batch_size", required=False,
                         default=DEFAULT_BATCH_SIZE, type=int,
-                        help="Mini batch size (defaults to 1)")
+                        help="Mini batch size (defaults to 32)")
     parser.add_argument("--learning_rate", required=False,
                         default=DEFAULT_LR, type=float,
                         help="Learning rate for the Adam optimizer")
@@ -73,22 +74,22 @@ def train(env,
     WGConfig.LR_CRITIC = 1e-4
     WGConfig.LR_ACTOR = 1e-5
     WGConfig.GRADIENT_CLIP = False
-    WGConfig.BATCH_SIZE = batch_size
+    WGConfig.BATCH_SIZE = 64
     WGConfig.VERBOSE = verbose
     WGConfig.INITIAL_EPSILON = 1.0
-    WGConfig.FINAL_EPSILON = 0.001
+    WGConfig.FINAL_EPSILON = 0.005
     WGConfig.DECAY_EPSILON = 5000
     WGConfig.UNIFORM_EPSILON = True
     WGConfig.K = 128
-    WGConfig.UPDATE_FREQ = 32
+    WGConfig.UPDATE_FREQ = 100
     WGConfig.ILLEGAL_GAME_OVER = False
     WGConfig.SIMULATE = -1
     WGConfig.SIMULATE_DO_NOTHING = False
     WGConfig.DISCOUNT_FACTOR = 0.99
-    WGConfig.REPLAY_BUFFER_SIZE = 1024*76
+    WGConfig.REPLAY_BUFFER_SIZE = 1024*64
     WGConfig.ACTION_SET = False
     WGConfig.ACTION_CHANGE = True
-    WGConfig.ACTION_REDISP = True
+    WGConfig.ACTION_REDISP = False
 
     agent = WGAgent(env.observation_space,
                     env.action_space,
@@ -119,8 +120,9 @@ if __name__ == "__main__":
         from grid2op.Backend import PandaPowerBackend
         backend = PandaPowerBackend()
 
+    
     env = make(args.data_dir,
-               difficulty="competition",
+               difficulty="0",
                backend=backend,
                action_class=TopologyAndDispatchAction,
                reward_class=CombinedScaledReward,
@@ -141,19 +143,26 @@ if __name__ == "__main__":
     #cr.addReward("distance", DistanceReward(), 1.0)
     #cr.addReward("overflow", CloseToOverflowReward(), 1.0)
     gp = GameplayReward()
-    gp.set_range(-10.0, 1.0)
+    gp.set_range(-4.0, 1.5)
     cr.addReward("game", gp, 1.0)
     #cr.addReward("eco", EconomicReward(), 2.0)
     reco = LinesReconnectedReward()
-    reco.set_range(0.0, 1.0)
+    reco.set_range(-1.0, 2.5)
     cr.addReward("reco", reco, 1.0)
     l2 = L2RPNReward()
     l2.set_range(0.0, env.n_line)
     cr.addReward("l2rpn", l2, 1.0 / env.n_line)
     #cr.addReward("flat", IncreasingFlatReward(), 1.0 / 8063.0)
-    cr.set_range(-10.0, 3.0)
+    cr.set_range(-1.0, 1.0)
     # Initialize custom rewards
     cr.initialize(env)
+
+    # Shuffle training data
+    def shuff(x):
+        lx = len(x)
+        s = np.random.choice(lx, size=lx, replace=False)
+        return x[s]
+    env.chronics_handler.shuffle(shuffler=shuff)
 
     train(env,
           name = args.name,

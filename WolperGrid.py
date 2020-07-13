@@ -126,18 +126,38 @@ class WolperGrid(AgentWithConverter):
 
         # Custom subs exclude
         exclude_subs = [48]
-        if len(act_dict["topology"]["bus_switch"]) > 0:
-            for d in act_dict["topology"]["bus_switch"]:
-                if d["substation"] in exclude_subs:
-                    return False
-        if len(act_dict["topology"]["assigned_bus"]) > 0:
-            for d in act_dict["topology"]["assigned_bus"]:
-                if d["substation"] in exclude_subs:
-                    return False
-        if len(act_dict["topology"]["disconnect_bus"]) > 0:
-            for d in act_dict["topology"]["disconnect_bus"]:
-                if d["substation"] in exclude_subs:
-                    return False
+        if len(exclude_subs):
+            if len(act_dict["topology"]["bus_switch"]) > 0:
+                for d in act_dict["topology"]["bus_switch"]:
+                    if d["substation"] in exclude_subs:
+                        return False
+            if len(act_dict["topology"]["assigned_bus"]) > 0:
+                for d in act_dict["topology"]["assigned_bus"]:
+                    if d["substation"] in exclude_subs:
+                        return False
+            if len(act_dict["topology"]["disconnect_bus"]) > 0:
+                for d in act_dict["topology"]["disconnect_bus"]:
+                    if d["substation"] in exclude_subs:
+                        return False
+
+        # Custom subs select
+        only_subs = []
+        # only_subs = [10,11,12,15,16,29,112,30,31,113,114,26] # R1
+        if len(only_subs):
+            if len(act_dict["topology"]["bus_switch"]) > 0:
+                for d in act_dict["topology"]["bus_switch"]:
+                    if d["substation"] in only_subs:
+                        return True
+            elif len(act_dict["topology"]["assigned_bus"]) > 0:
+                for d in act_dict["topology"]["assigned_bus"]:
+                    if d["substation"] in only_subs:
+                        return True
+            elif len(act_dict["topology"]["disconnect_bus"]) > 0:
+                for d in act_dict["topology"]["disconnect_bus"]:
+                    if d["substation"] in only_subs:
+                        return True
+            else:
+                return False
 
         # Not filtered, keep it
         return True
@@ -287,8 +307,8 @@ class WolperGrid(AgentWithConverter):
         self.epoch_ambiguous.append(episode_ambiguous)
         self.epoch_do_nothing.append(episode_do_nothing)
         if cfg.VERBOSE:
-            done_episode_msg = "Episode [{:04d}] -- Steps [{}] -- Reward [{}]"
-            print(done_episode_msg.format(m, t, total_reward))
+            done_episode_msg = "Episode [{}-{:04d}] - Steps [{}] - Reward [{}]"
+            print(done_episode_msg.format(env.name, m, t, total_reward))
         # Ensure arrays dont grow too much
         if len(self.epoch_rewards) > 2048:
             self.epoch_rewards = self.epoch_rewards[-2048:]
@@ -315,18 +335,10 @@ class WolperGrid(AgentWithConverter):
         self.action_space.save(modelpath, "actions.npy")
         flann_path = os.path.join(modelpath, "flann.index")
         self.flann.save_flann(flann_path)
-
-        # Shuffle training data
-        def shuff(x):
-            lx = len(x)
-            s = np.random.choice(lx, size=lx, replace=False)
-            return x[s]
-        for mix in env:
-            mix.chronics_handler.shuffle(shuffler=shuff)
         
         # Training loop, over M episodes
         for m in range(iterations):
-            init_obs = env.reset(random=True) # This shouldn't raise
+            init_obs = env.reset() # This shouldn't raise
             self.reset(init_obs)
 
             # Enter episode
@@ -476,16 +488,16 @@ class WolperGrid(AgentWithConverter):
                 if r_test > r:
                     act_index = 0
 
-        if batch_dbg == 0 and self.steps % (cfg.UPDATE_FREQ * 10) == 0:
+        if batch_dbg == 0 and self.steps % (cfg.UPDATE_FREQ * 100) == 0:
             pd_dbg = pd.DataFrame(np.array([
                 proto.numpy()[0],
                 self.flann[act_index],
             ]),
             index=[
-                "proto_{}_{}".format(self.steps, use_target),
-                "flann_{}_{}".format(self.steps, use_target)
+                "proto_{}".format(self.steps),
+                "flann_{}".format(self.steps)
             ])
-            pd_dbg.to_csv('flann_dbg.csv', mode='a', header=False)
+            pd_dbg.to_csv('ddpg_dbg.csv', mode='a', header=False)
 
         return act_index
 
@@ -571,17 +583,15 @@ class WolperGrid(AgentWithConverter):
             actor_grads = tf.clip_by_global_norm(actor_grads, grad_clip)[0]
             crit_grads = tf.clip_by_global_norm(crit_grads, grad_clip)[0]
 
-        if self.steps % (cfg.UPDATE_FREQ * 10) == 0:
+        if self.steps % (cfg.UPDATE_FREQ * 100) == 0:
             pd_dbg = pd.DataFrame(np.array([
                 dqda[0].numpy(),
                 dpg_t_a[0].numpy(),
-                t1_a[0],
                 actor_grads[-1].numpy()
             ]),
             index=[
                 "dqda_{}".format(self.steps),
                 "dpg_t_a_{}".format(self.steps),
-                "t1_a_{}".format(self.steps),
                 "grads_{}".format(self.steps)
             ])
             pd_dbg.to_csv('ddpg_dbg.csv', mode='a', header=False)

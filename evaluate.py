@@ -10,7 +10,7 @@ from grid2op.Reward import *
 from grid2op.Action import *
 
 from WolperGrid import WolperGrid as WGAgent
-from WolperGrid_Config import WolperGrid_Config as WGAgentConf
+from WolperGrid_Config import WolperGrid_Config as WGConfig
 from l2rpn_baselines.utils.save_log_gif import save_log_gif
 from wg_util import limit_gpu_usage
 
@@ -62,10 +62,10 @@ def evaluate(env,
     # Limit gpu usage
     limit_gpu_usage()
 
-    WGAgentConf.VERBOSE = verbose
-    WGAgentConf.K = 512
-    WGAgentConf.SIMULATE = -1
-    WGAgentConf.SIMULATE_DO_NOTHING = False
+    WGConfig.VERBOSE = verbose
+    WGConfig.K = 512
+    WGConfig.SIMULATE = -1
+    WGConfig.SIMULATE_DO_NOTHING = False
     WGConfig.ACTION_SET = False
     WGConfig.ACTION_CHANGE = True
     WGConfig.ACTION_REDISP = True

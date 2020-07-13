@@ -31,13 +31,14 @@ def distrib(agent_path,
         [ ]
     ]
     for a in ep.actions:
+        c = -1
         # Find category & index
         ## Lines set
         if np.any(a._set_line_status != 0):
             c = 0
             i = np.where(a._set_line_status != 0)[0][0]
         ## Lines change
-        elif np.any(a._switch_line_status == True):
+        elif np.any(a._switch_line_status):
             c = 0
             i = np.where(a._switch_line_status == True)[0][0]
         ## Topo set
@@ -56,7 +57,8 @@ def distrib(agent_path,
             i = np.where(a._redispatch != 0.0)[0][0]
 
         # Register it into tree
-        tree[c].append(i)
+        if c != -1:
+            tree[c].append(i)
 
     plt.figure(1)    
     fig_lines, ax_lines = plt.subplots()
