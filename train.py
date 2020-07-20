@@ -72,24 +72,26 @@ def train(env,
 
     # Set config
     WGConfig.LR_CRITIC = 1e-4
-    WGConfig.LR_ACTOR = 1e-5
+    WGConfig.LR_ACTOR = 1e-4
     WGConfig.GRADIENT_CLIP = False
     WGConfig.BATCH_SIZE = 64
     WGConfig.VERBOSE = verbose
     WGConfig.INITIAL_EPSILON = 1.0
-    WGConfig.FINAL_EPSILON = 0.005
-    WGConfig.DECAY_EPSILON = 5000
+    WGConfig.FINAL_EPSILON = 0.1
+    WGConfig.DECAY_EPSILON = 1000
     WGConfig.UNIFORM_EPSILON = True
     WGConfig.K = 128
-    WGConfig.UPDATE_FREQ = 100
+    WGConfig.UPDATE_FREQ = 128
+    WGConfig.UPDATE_TARGET_SOFT_TAU = 1e-3
     WGConfig.ILLEGAL_GAME_OVER = False
     WGConfig.SIMULATE = -1
     WGConfig.SIMULATE_DO_NOTHING = False
     WGConfig.DISCOUNT_FACTOR = 0.99
-    WGConfig.REPLAY_BUFFER_SIZE = 1024*64
+    WGConfig.REPLAY_BUFFER_SIZE = 1024*128
+    WGConfig.REPLAY_BUFFER_MIN = 2048
     WGConfig.ACTION_SET = False
-    WGConfig.ACTION_CHANGE = True
-    WGConfig.ACTION_REDISP = False
+    WGConfig.ACTION_CHANGE = False
+    WGConfig.ACTION_REDISP = True
 
     agent = WGAgent(env.observation_space,
                     env.action_space,
@@ -143,15 +145,15 @@ if __name__ == "__main__":
     #cr.addReward("distance", DistanceReward(), 1.0)
     #cr.addReward("overflow", CloseToOverflowReward(), 1.0)
     gp = GameplayReward()
-    gp.set_range(-4.0, 1.5)
+    gp.set_range(-5.0, 2.25)
     cr.addReward("game", gp, 1.0)
     #cr.addReward("eco", EconomicReward(), 2.0)
     reco = LinesReconnectedReward()
-    reco.set_range(-1.0, 2.5)
-    cr.addReward("reco", reco, 1.0)
+    reco.set_range(-1.0, 1.0)
+    cr.addReward("reco", reco, 0.25)
     l2 = L2RPNReward()
     l2.set_range(0.0, env.n_line)
-    cr.addReward("l2rpn", l2, 1.0 / env.n_line)
+    cr.addReward("l2rpn", l2, 2.5 / env.n_line)
     #cr.addReward("flat", IncreasingFlatReward(), 1.0 / 8063.0)
     cr.set_range(-1.0, 1.0)
     # Initialize custom rewards

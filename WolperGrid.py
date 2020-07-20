@@ -230,7 +230,7 @@ class WolperGrid(AgentWithConverter):
         if cfg.VERBOSE:
             scenario_path = env.chronics_handler.real_data.get_id()
             scenario_name = os.path.basename(os.path.abspath(scenario_path))
-            start_episode_msg = "Episode [{:04d}] - {} - Epsilon {}"
+            start_episode_msg = "Episode [{:05d}] - {} - Epsilon {}"
             print(start_episode_msg.format(m, scenario_name, self.epsilon))
 
         # Loop for t in episode steps
@@ -257,7 +257,7 @@ class WolperGrid(AgentWithConverter):
                                 reward, self.done, new_state)
 
             # Minibatch train
-            if self.exp_buffer.size() >= self.batch_size and \
+            if self.exp_buffer.size() >= cfg.REPLAY_BUFFER_MIN and \
                self.steps % cfg.UPDATE_FREQ == 0:
                 # Sample from experience buffer
                 batch = self.exp_buffer.sample(self.batch_size)
@@ -511,7 +511,7 @@ class WolperGrid(AgentWithConverter):
             return np.random.randint(self.action_space.n)
 
     def _ddpg_train(self, batch, step):
-        grad_clip = 50.0
+        grad_clip = 40.0
         input_shape = (self.batch_size,
                        self.observation_size)
         # S(t)
@@ -529,6 +529,7 @@ class WolperGrid(AgentWithConverter):
             t1_a.append(self.flann[a])
         t1_a = np.array(t1_a)
 
+        dpg_t_a_np = np.zeros_like(t_a[0])
         # Perform DDPG update as per DeepMind implementation:
         # github.com/deepmind/acme/blob/master/acme/agents/tf/ddpg/learning.py
         with tf.GradientTape(persistent=True) as tape:
@@ -551,8 +552,9 @@ class WolperGrid(AgentWithConverter):
             loss_c = 0.5 * tf.square(td_err)
             loss_critic = tf.math.reduce_mean(loss_c, axis=0)
 
-            dpg_t_a = self.Qmain.actor([t_O])
-            dpg_t_q = self.Qmain.critic([t_O, dpg_t_a])
+            dpg_t_a = self.Qmain.actor([t1_O])
+            dpg_t_a_np[:] = dpg_t_a.numpy()[0][:]
+            dpg_t_q = self.Qmain.critic([t1_O, dpg_t_a])
             # DPG / gradient sample
             # github.com/deepmind/acme/blob/master/acme/tf/losses/dpg.py
             dqda = tape.gradient([dpg_t_q], [dpg_t_a])[0]
@@ -565,13 +567,14 @@ class WolperGrid(AgentWithConverter):
             loss_act = 0.5 * tf.reduce_sum(target_sq, axis=-1)
             loss_actor = tf.reduce_mean(loss_act, axis=0)
 
-        # Gradients
+        # Get vars
         actor_vars = self.Qmain.actor.trainable_variables
         crit_vars = (
             self.Qmain.obs.trainable_variables +
             self.Qmain.critic.trainable_variables
         )
 
+        # Gradients
         actor_grads = tape.gradient(loss_actor, actor_vars)
         crit_grads = tape.gradient(loss_critic, crit_vars)
 
@@ -586,7 +589,7 @@ class WolperGrid(AgentWithConverter):
         if self.steps % (cfg.UPDATE_FREQ * 100) == 0:
             pd_dbg = pd.DataFrame(np.array([
                 dqda[0].numpy(),
-                dpg_t_a[0].numpy(),
+                dpg_t_a_np,
                 actor_grads[-1].numpy()
             ]),
             index=[
