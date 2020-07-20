@@ -13,7 +13,6 @@ from collections import deque
 import numpy as np
 import random
 
-
 class ReplayBuffer:
     """Constructs a buffer object that stores the past moves
     and samples a set of subsamples"""
@@ -29,8 +28,7 @@ class ReplayBuffer:
         # r is reward, d is whether it is the end,
         # and s2 is next state
         if np.any(~np.isfinite(s)) or np.any(~np.isfinite(s2)):
-            # TODO proper handling of infinite values somewhere !!!!
-            raise RuntimeError("Infinite value somwhere in at least one of the state")
+            raise RuntimeError("Infinite value in one of the state")
 
         experience = (s, a, r, d, s2)
         if self.count < self.buffer_size:
@@ -49,9 +47,9 @@ class ReplayBuffer:
 
         batch = []
         if self.count < batch_size:
-            batch = random.sample(self.buffer, self.count)
+            batch = random.sample(self.buffer, k=self.count)
         else:
-            batch = random.sample(self.buffer, batch_size)
+            batch = random.sample(self.buffer, k=batch_size)
 
         # Maps each experience in batch in batches of states, actions, rewards
         # and new states
