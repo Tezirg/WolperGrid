@@ -111,7 +111,7 @@ class WolperGrid_NN(object):
                               name='actor_obs')
 
         # Forward encode
-        layer_n = 8
+        layer_n = 4
         layer_idxs = np.arange(layer_n)
         layer_range = [0, layer_n - 1]
         size_range = [
@@ -123,7 +123,7 @@ class WolperGrid_NN(object):
         proto = self.construct_mlp(input_obs,
                                    sizes,
                                    name="actor-mlp",
-                                   activation=tf.nn.relu,
+                                   activation=tf.nn.elu,
                                    activation_final=tf.nn.tanh)
         # Backwards pass
         actor_inputs = [ input_obs ]
@@ -147,7 +147,7 @@ class WolperGrid_NN(object):
         input_concat = tf.concat([input_obs, input_proto], axis=-1,
                                  name="critic_concat")
         # Forward pass
-        layer_n = 8
+        layer_n = 4
         layer_idxs = np.arange(layer_n)
         layer_range = [0, layer_n - 1]
         size_range = [
@@ -159,7 +159,7 @@ class WolperGrid_NN(object):
         Q = self.construct_mlp(input_concat,
                                sizes,
                                name="critic-mlp",
-                               activation=tf.nn.relu,
+                               activation=tf.nn.elu,
                                activation_final=None)
 
         # Backwards pass
