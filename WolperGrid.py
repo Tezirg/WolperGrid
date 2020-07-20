@@ -282,13 +282,17 @@ class WolperGrid(AgentWithConverter):
                     WolperGrid_NN.update_target_hard(self.Qmain.critic,
                                                      self.Qtarget.critic)
             # Log to tensorboard
-            if self.steps > cfg.UPDATE_FREQ and \
+            if self.exp_buffer.size() >= cfg.REPLAY_BUFFER_MIN and \
+               self.steps > cfg.UPDATE_FREQ and \
                self.steps > 100 and \
+               len(self.epoch_alive) and \
                self.steps % cfg.LOG_FREQ == 0:
                 self._tf_log_summary(self.steps)
 
             # Increment step
-            if info["is_illegal"]:
+            if info["is_illegal"] or \
+               info["is_illegal_reco"] or \
+               info["is_dispatching_illegal"]:
                 episode_illegal += 1
             if info["is_ambiguous"]:
                 episode_ambiguous += 1
@@ -552,9 +556,9 @@ class WolperGrid(AgentWithConverter):
             loss_c = 0.5 * tf.square(td_err)
             loss_critic = tf.math.reduce_mean(loss_c, axis=0)
 
-            dpg_t_a = self.Qmain.actor([t1_O])
+            dpg_t_a = self.Qmain.actor([t_O])
             dpg_t_a_np[:] = dpg_t_a.numpy()[0][:]
-            dpg_t_q = self.Qmain.critic([t1_O, dpg_t_a])
+            dpg_t_q = self.Qmain.critic([t_O, dpg_t_a])
             # DPG / gradient sample
             # github.com/deepmind/acme/blob/master/acme/tf/losses/dpg.py
             dqda = tape.gradient([dpg_t_q], [dpg_t_a])[0]
