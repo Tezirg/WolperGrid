@@ -33,12 +33,9 @@ class WolperGrid_Flann(object):
             flann_diff.append(np.full(self.n_line, 10.0, dtype=np.float32))
 
         if cfg.ACTION_SET:
-            self._action_size += self.topo_size * 2
+            self._action_size += self.topo_size
             self.act_offset.append(self.act_offset[-1])
-            self.act_offset.append(self.act_offset[-1] + self.topo_size * 2)
-            bus_idx = np.arange(self.topo_size * 2)
-            self.s_bus0 = bus_idx[bus_idx % 2 == 0]
-            self.s_bus1 = bus_idx[bus_idx % 2 == 1]            
+            self.act_offset.append(self.act_offset[-1] + self.topo_size)
             flann_diff.append(np.full(self.topo_size, 100.0, dtype=np.float32))
 
         if cfg.ACTION_CHANGE:
@@ -66,7 +63,7 @@ class WolperGrid_Flann(object):
 
     def _act_to_flann(self, act):
         # Declare zero vect
-        act_v = np.zeros(self._action_size, dtype=np.float32)
+        act_v = np.full(self._action_size, 0.0, dtype=np.float32)
 
         off_s = 1
         off_e = 2
@@ -74,8 +71,9 @@ class WolperGrid_Flann(object):
         if cfg.ACTION_SET: # Copy set line status
             act_s = self.act_offset[off_s]
             act_e = self.act_offset[off_e] 
-            line_s_f = act._set_line_status.astype(np.float32)
-            act_v[act_s:act_e] = line_s_f
+            line_s_f = act._set_line_status.astype(int)
+            act_v[act_s:act_e][line_s_f == 1] = 1.0
+            act_v[act_s:act_e][line_s_f == 2] = -1.0
             off_s += 2
             off_e += 2
 
@@ -90,8 +88,8 @@ class WolperGrid_Flann(object):
             act_s = self.act_offset[off_s]
             act_e = self.act_offset[off_e] 
             bus_s_f = act._set_topo_vect.astype(int)
-            act_v[act_s:act_e][self.s_bus0][bus_s_f == 1] = 1.0
-            act_v[act_s:act_e][self.s_bus1][bus_s_f == 2] = 1.0
+            act_v[act_s:act_e][bus_s_f == 1] = 1.0
+            act_v[act_s:act_e][bus_s_f == 2] = -1.0
             off_s += 2
             off_e += 2
 
@@ -104,7 +102,7 @@ class WolperGrid_Flann(object):
 
         if cfg.ACTION_REDISP: # Dispatch linear rescale
             act_s = self.act_offset[off_s]
-            act_e = self.act_offset[off_e] 
+            act_e = self.act_offset[off_e]
             disp = disp_act_to_nn(self.action_space, act._redispatch)
             act_v[act_s:act_e] = disp
 

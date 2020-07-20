@@ -41,9 +41,18 @@ class WolperGrid_NN(object):
                       layer_in,
                       layer_sizes,
                       name="mlp",
-                      activation=tf.nn.relu,
+                      batch_norm=True,
+                      activation=tf.nn.elu,
                       activation_final=None):
-        layer = layer_in
+        if batch_norm:
+            bn_name = "{}-bn".format(name)
+            layer = tfkl.BatchNormalization(trainable=self.is_training,
+                                            name=bn_name)(layer_in)
+            th_name = "{}-tanh".format(name)
+            layer = tf.nn.tanh(layer, name=th_name)
+        else:
+            layer = layer_in
+
         for i, size in enumerate(layer_sizes[:-1]):
             layer_name = "{}-fc-{}".format(name, i + 1)
             layer = tfkl.Dense(size, name=layer_name)(layer)
@@ -113,10 +122,9 @@ class WolperGrid_NN(object):
         sizes = list(sizes_np)
         proto = self.construct_mlp(input_obs,
                                    sizes,
-                                   name="actor",
-                                   activation=tf.nn.elu,
-                                   activation_final=tf.math.sigmoid)
-    
+                                   name="actor-mlp",
+                                   activation=tf.nn.relu,
+                                   activation_final=tf.nn.tanh)
         # Backwards pass
         actor_inputs = [ input_obs ]
         actor_outputs = [ proto ]
@@ -143,15 +151,17 @@ class WolperGrid_NN(object):
         layer_idxs = np.arange(layer_n)
         layer_range = [0, layer_n - 1]
         size_range = [
-            self.obs_size + self.proto_size - 64,
+            self.obs_size + self.proto_size,
             1
         ]
         sizes_np = np.interp(layer_idxs, layer_range, size_range)
         sizes = list(sizes_np)
         Q = self.construct_mlp(input_concat,
                                sizes,
-                               name="critic",
-                               activation=tf.nn.elu)
+                               name="critic-mlp",
+                               activation=tf.nn.relu,
+                               activation_final=None)
+
         # Backwards pass
         critic_inputs = [ input_obs, input_proto ]
         critic_outputs = [ Q ]
