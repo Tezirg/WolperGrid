@@ -71,16 +71,16 @@ def train(env,
           verbose=DEFAULT_VERBOSE):
 
     # Set config
-    WGConfig.LR_CRITIC = 1e-4
+    WGConfig.LR_CRITIC = 1e-5
     WGConfig.LR_ACTOR = 1e-4
     WGConfig.GRADIENT_CLIP = False
     WGConfig.BATCH_SIZE = 64
     WGConfig.VERBOSE = verbose
-    WGConfig.INITIAL_EPSILON = 1.0
-    WGConfig.FINAL_EPSILON = 0.1
+    WGConfig.INITIAL_EPSILON = 0.2
+    WGConfig.FINAL_EPSILON = 0.01
     WGConfig.DECAY_EPSILON = 1000
     WGConfig.UNIFORM_EPSILON = True
-    WGConfig.K = 128
+    WGConfig.K = 32
     WGConfig.UPDATE_FREQ = 128
     WGConfig.UPDATE_TARGET_SOFT_TAU = 1e-3
     WGConfig.ILLEGAL_GAME_OVER = False
@@ -88,7 +88,7 @@ def train(env,
     WGConfig.SIMULATE_DO_NOTHING = False
     WGConfig.DISCOUNT_FACTOR = 0.99
     WGConfig.REPLAY_BUFFER_SIZE = 1024*128
-    WGConfig.REPLAY_BUFFER_MIN = 2048
+    WGConfig.REPLAY_BUFFER_MIN = 1024*2
     WGConfig.ACTION_SET = False
     WGConfig.ACTION_CHANGE = False
     WGConfig.ACTION_REDISP = True

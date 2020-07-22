@@ -556,16 +556,21 @@ class WolperGrid(AgentWithConverter):
             loss_c = 0.5 * tf.square(td_err)
             loss_critic = tf.math.reduce_mean(loss_c, axis=0)
 
+            # DPG / gradient sample
+            # github.com/deepmind/acme/blob/master/acme/tf/losses/dpg.py
+
+            # Modified, we use t_O here instead of t1_O
+            # So stop gradient on obs net for policy
+            t_O = tf.stop_gradient(t_O)
             dpg_t_a = self.Qmain.actor([t_O])
             dpg_t_a_np[:] = dpg_t_a.numpy()[0][:]
             dpg_t_q = self.Qmain.critic([t_O, dpg_t_a])
-            # DPG / gradient sample
-            # github.com/deepmind/acme/blob/master/acme/tf/losses/dpg.py
             dqda = tape.gradient([dpg_t_q], [dpg_t_a])[0]
             # Gradient clip if enabled
             if cfg.GRADIENT_CLIP:
                 dqda = tf.clip_by_norm(dqda, 1.0, axes=-1)
-            target_a = dqda + dpg_t_a
+            # Modifed DPG to converge at better proto actions
+            target_a = t_a + dqda * dpg_t_a - dqda * t_a
             target_a = tf.stop_gradient(target_a)
             target_sq = tf.square(target_a - dpg_t_a)
             loss_act = 0.5 * tf.reduce_sum(target_sq, axis=-1)

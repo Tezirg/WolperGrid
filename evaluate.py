@@ -67,7 +67,7 @@ def evaluate(env,
     WGConfig.SIMULATE = -1
     WGConfig.SIMULATE_DO_NOTHING = False
     WGConfig.ACTION_SET = False
-    WGConfig.ACTION_CHANGE = True
+    WGConfig.ACTION_CHANGE = False
     WGConfig.ACTION_REDISP = True
 
     runner_params = env.get_params_for_runner()

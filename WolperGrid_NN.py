@@ -7,8 +7,14 @@ import tensorflow.keras.models as tfkm
 import tensorflow.keras.optimizers as tfko
 import tensorflow.keras.layers as tfkl
 import tensorflow.keras.activations as tfka
+import tensorflow.keras.initializers as tfki
 
 from WolperGrid_Config import WolperGrid_Config as cfg
+
+uniform_initializer = tfki.VarianceScaling(
+    distribution='uniform',
+    mode='fan_out',
+    scale=0.333)
 
 class WolperGrid_NN(object):
     def __init__(self,
@@ -44,18 +50,24 @@ class WolperGrid_NN(object):
                       batch_norm=True,
                       activation=tf.nn.elu,
                       activation_final=None):
+        size_index = 0
         if batch_norm:
+            pre_name = "{}-bn-fc".format(name)
+            layer = tfkl.Dense(layer_sizes[0], name=pre_name)(layer_in)
             bn_name = "{}-bn".format(name)
             layer = tfkl.BatchNormalization(trainable=self.is_training,
-                                            name=bn_name)(layer_in)
+                                            name=bn_name)(layer)
             th_name = "{}-tanh".format(name)
             layer = tf.nn.tanh(layer, name=th_name)
+            size_index = 1
         else:
             layer = layer_in
 
-        for i, size in enumerate(layer_sizes[:-1]):
+        for i, size in enumerate(layer_sizes[size_index:-1]):
             layer_name = "{}-fc-{}".format(name, i + 1)
-            layer = tfkl.Dense(size, name=layer_name)(layer)
+            layer = tfkl.Dense(size,
+                               kernel_initializer=uniform_initializer,
+                               name=layer_name)(layer)
             # Add activation if provided
             if activation is not None:
                 activation_name = "{}-act-{}".format(name, i + 1)
@@ -63,7 +75,9 @@ class WolperGrid_NN(object):
 
         # Final layer
         layer_name = "{}-fc-{}".format(name, "final")
-        layer_final = tfkl.Dense(layer_sizes[-1], name=layer_name)(layer)
+        layer_final = tfkl.Dense(layer_sizes[-1],
+                                 kernel_initializer=uniform_initializer,
+                                 name=layer_name)(layer)
         if activation_final is not None:
             activation_name = "{}-act-{}".format(name, "final")
             layer_final = activation_final(layer_final, name=activation_name)
@@ -123,6 +137,7 @@ class WolperGrid_NN(object):
         proto = self.construct_mlp(input_obs,
                                    sizes,
                                    name="actor-mlp",
+                                   batch_norm=True,
                                    activation=tf.nn.elu,
                                    activation_final=tf.nn.tanh)
         # Backwards pass
@@ -145,7 +160,7 @@ class WolperGrid_NN(object):
                                 name='critic_proto')
 
         input_concat = tf.concat([input_obs, input_proto], axis=-1,
-                                 name="critic_concat")
+                                 name="actor-concat")
         # Forward pass
         layer_n = 4
         layer_idxs = np.arange(layer_n)
@@ -159,9 +174,9 @@ class WolperGrid_NN(object):
         Q = self.construct_mlp(input_concat,
                                sizes,
                                name="critic-mlp",
+                               batch_norm=True,
                                activation=tf.nn.elu,
                                activation_final=None)
-
         # Backwards pass
         critic_inputs = [ input_obs, input_proto ]
         critic_outputs = [ Q ]
