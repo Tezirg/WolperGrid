@@ -149,7 +149,7 @@ def disp_act_to_nn(obs, act_redispatch):
             continue
         rmin = obs.gen_max_ramp_down[i]
         rmax = obs.gen_max_ramp_up[i]
-        r = np.interp(d, [-rmin, rmax], [-1.0, 1.0])
+        r = np.interp(d, [-rmin, 0.0, rmax], [-1.0, 0.0, 1.0])
         netdisp[i] = r
 
     return netdisp
