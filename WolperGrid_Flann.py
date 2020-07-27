@@ -16,7 +16,6 @@ class WolperGrid_Flann(object):
         self.disp_size = action_space.n_gen
 
         # Compute sizes and offsets once
-        flann_diff = []
         self.act_offset = [0]
         self._action_size = 0
 
@@ -24,33 +23,26 @@ class WolperGrid_Flann(object):
             self._action_size += self.n_line
             self.act_offset.append(self.act_offset[-1])
             self.act_offset.append(self.act_offset[-1] + self.n_line)
-            flann_diff.append(np.full(self.n_line, 10.0, dtype=np.float32))
 
         if cfg.ACTION_CHANGE:
             self._action_size += self.n_line
             self.act_offset.append(self.act_offset[-1])
             self.act_offset.append(self.act_offset[-1] + self.n_line)
-            flann_diff.append(np.full(self.n_line, 10.0, dtype=np.float32))
 
         if cfg.ACTION_SET:
             self._action_size += self.topo_size
             self.act_offset.append(self.act_offset[-1])
             self.act_offset.append(self.act_offset[-1] + self.topo_size)
-            flann_diff.append(np.full(self.topo_size, 100.0, dtype=np.float32))
 
         if cfg.ACTION_CHANGE:
             self._action_size += self.topo_size
             self.act_offset.append(self.act_offset[-1])
             self.act_offset.append(self.act_offset[-1] + self.topo_size)
-            flann_diff.append(np.full(self.topo_size, 100.0, dtype=np.float32))
 
         if cfg.ACTION_REDISP:
             self._action_size += self.disp_size
             self.act_offset.append(self.act_offset[-1])
             self.act_offset.append(self.act_offset[-1] + self.disp_size)
-            flann_diff.append(np.full(self.disp_size, 100.0, dtype=np.float32))
-        
-        self.flann_diff = np.concatenate(flann_diff)
 
         # Expose proto size
         self.action_size = self._action_size
@@ -106,12 +98,12 @@ class WolperGrid_Flann(object):
             disp = disp_act_to_nn(self.action_space, act._redispatch)
             act_v[act_s:act_e] = disp
 
-        return act_v
+        return self._normx(act_v)
 
     @staticmethod
     def _normx(X):
         norm = np.linalg.norm(X)
-        if norm < 1.0:
+        if norm == 0.0:
             return X
         return X / norm
 
@@ -125,7 +117,7 @@ class WolperGrid_Flann(object):
             self._act_vects.append(act_v)
 
         flann_pts = [np.array(a) for a in self._act_vects]
-        self._flann_pts = np.array(flann_pts)# * self.flann_diff
+        self._flann_pts = np.array(flann_pts)
         print("{} ..Done".format(self._flann_pts.shape))
         
     def construct_flann(self):
@@ -149,7 +141,7 @@ class WolperGrid_Flann(object):
         self._flann.save_index(bytes_filename)
 
     def search_flann(self, act_vect, k):
-        search_vect = np.array(act_vect)# * self.flann_diff
+        search_vect = np.array(act_vect)
         res, _ = self._flann.nn_index(search_vect, num_neighbors=k)
         # Dont care about distance
         return res        

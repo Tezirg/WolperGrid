@@ -82,6 +82,7 @@ class WolperGrid(AgentWithConverter):
         self.epoch_illegal = []
         self.epoch_ambiguous = []
         self.epoch_do_nothing = []
+        self.epoch_actions = []
         self.epsilon = cfg.INITIAL_EPSILON
         self.step_epsilon = (cfg.INITIAL_EPSILON - cfg.FINAL_EPSILON)
         self.step_epsilon /= cfg.DECAY_EPSILON
@@ -226,6 +227,7 @@ class WolperGrid(AgentWithConverter):
         episode_illegal = 0
         episode_ambiguous = 0
         episode_do_nothing = 0
+        episode_actions = []
 
         if cfg.VERBOSE:
             scenario_path = env.chronics_handler.real_data.get_id()
@@ -298,6 +300,7 @@ class WolperGrid(AgentWithConverter):
                 episode_ambiguous += 1
             if pred == 0:
                 episode_do_nothing += 1
+            episode_actions.append(pred)
             t += 1
             self.steps += 1
             total_reward += reward
@@ -310,6 +313,7 @@ class WolperGrid(AgentWithConverter):
         self.epoch_illegal.append(episode_illegal)
         self.epoch_ambiguous.append(episode_ambiguous)
         self.epoch_do_nothing.append(episode_do_nothing)
+        self.epoch_actions.append(len(list(set(episode_actions))))
         if cfg.VERBOSE:
             done_episode_msg = "Episode [{}-{:04d}] - Steps [{}] - Reward [{}]"
             print(done_episode_msg.format(env.name, m, t, total_reward))
@@ -320,6 +324,7 @@ class WolperGrid(AgentWithConverter):
             self.epoch_illegal = self.epoch_illegal[-2048:]
             self.epoch_ambiguous = self.epoch_ambiguous[-2048:]
             self.epoch_do_nothing = self.epoch_do_nothing[-2048:]
+            self.epoch_actions = self.epoch_actions[-2048:]
 
     ## Training Procedure
     def train(self, env,
@@ -373,28 +378,33 @@ class WolperGrid(AgentWithConverter):
             mean_illegal = np.mean(self.epoch_illegal)
             mean_ambiguous = np.mean(self.epoch_ambiguous)
             mean_dn = np.mean(self.epoch_do_nothing)
+            mean_act = np.mean(self.epoch_actions)
             mean_reward_10 = mean_reward
             mean_alive_10 = mean_alive
             mean_illegal_10 = mean_illegal
             mean_ambiguous_10 = mean_ambiguous
             mean_dn_10 = mean_dn
+            mean_act_10 = mean_act
             mean_reward_100 = mean_reward
             mean_alive_100 = mean_alive
             mean_illegal_100 = mean_illegal
             mean_ambiguous_100 = mean_ambiguous
             mean_dn_100 = mean_dn
+            mean_act_100 = mean_act
             if len(self.epoch_rewards) >= 10:
                 mean_reward_10 = np.mean(self.epoch_rewards[-10:])
                 mean_alive_10 = np.mean(self.epoch_alive[-10:])
                 mean_illegal_10 = np.mean(self.epoch_illegal[-10:])
                 mean_ambiguous_10 = np.mean(self.epoch_ambiguous[-10:])
                 mean_dn_10 = np.mean(self.epoch_do_nothing[-10:])
+                mean_act_10 = np.mean(self.epoch_actions[-10:])
             if len(self.epoch_rewards) >= 100:
                 mean_reward_100 = np.mean(self.epoch_rewards[-100:])
                 mean_alive_100 = np.mean(self.epoch_alive[-100:])
                 mean_illegal_100 = np.mean(self.epoch_illegal[-100:])
                 mean_ambiguous_100 = np.mean(self.epoch_ambiguous[-100:])
                 mean_dn_100 = np.mean(self.epoch_do_nothing[-100:])
+                mean_act_100 = np.mean(self.epoch_actions[-100:])
             tf.summary.scalar("mean_reward", mean_reward, step)
             tf.summary.scalar("mean_reward_100", mean_reward_100, step)
             tf.summary.scalar("mean_reward_10", mean_reward_10, step)
@@ -409,18 +419,21 @@ class WolperGrid(AgentWithConverter):
             tf.summary.scalar("mean_ambiguous_10", mean_ambiguous_10, step)
             tf.summary.scalar("mean_donothing_100", mean_dn_100, step)
             tf.summary.scalar("mean_donothing_10", mean_dn_10, step)
+            tf.summary.scalar("mean_act_100", mean_act_100, step)
+            tf.summary.scalar("mean_act_10", mean_act_10, step)
             tf.summary.scalar("epsilon", self.epsilon, step)
             tf.summary.scalar("loss_actor", self.loss_actor, step)
             tf.summary.scalar("loss_critic", self.loss_critic, step)
 
-    def predict_k(self, obs_input, proto, use_target=False):
+    def predict_k(self, obs_input, proto,
+                  use_target=False):
         # Get k actions
         k_acts = self.flann.search_flann(proto, cfg.K)
 
         # Get Q values
-        Q = np.zeros(cfg.K)
+        Q = np.full(cfg.K, -1e3)
         # By chunks
-        k_batch = 512
+        k_batch = 32
         k_rest = cfg.K % k_batch
         k_batch_data = np.repeat(obs_input, k_batch, axis=0)
         for i in range (0, cfg.K, k_batch):
@@ -435,24 +448,26 @@ class WolperGrid(AgentWithConverter):
             act_batch = np.array(act_batch_li)
             input_batch = [k_batch_data, act_batch]
             if use_target:
-                Q_batch = self.Qtarget.critic(input_batch).numpy()
+                Q_batch = self.Qtarget.critic(input_batch, training=False)
             else:
-                Q_batch = self.Qmain.critic(input_batch).numpy()
-            Q_batch = Q_batch.reshape(a_e - a_s)
+                Q_batch = self.Qmain.critic(input_batch, training=False)
+            Q_batch = Q_batch.numpy().reshape(a_e - a_s)
             Q[a_s:a_e] = Q_batch[:]
 
         return k_acts[0], Q
 
-    def predict_move(self, data, use_target=False, batch_dbg=-1):
+    def predict_move(self, data,
+                     use_target=False,
+                     batch_dbg=-1):
         input_shape = (1, self.observation_size)
         data_input = data.reshape(input_shape)
         obs_input = [data_input]
         if use_target:
-            obs = self.Qtarget.obs(obs_input)
-            proto = self.Qtarget.actor(obs)
+            obs = self.Qtarget.obs(obs_input, training=False)
+            proto = self.Qtarget.actor(obs, training=False)
         else:
-            obs = self.Qmain.obs(obs_input)
-            proto = self.Qmain.actor(obs)
+            obs = self.Qmain.obs(obs_input, training=False)
+            proto = self.Qmain.actor(obs, training=False)
 
         # Send k closest actions to critic
         k_acts, Q = self.predict_k(obs.numpy(), proto.numpy(), use_target)
@@ -533,7 +548,6 @@ class WolperGrid(AgentWithConverter):
             t1_a.append(self.flann[a])
         t1_a = np.array(t1_a)
 
-        dpg_t_a_np = np.zeros_like(t_a[0])
         # Perform DDPG update as per DeepMind implementation:
         # github.com/deepmind/acme/blob/master/acme/agents/tf/ddpg/learning.py
         with tf.GradientTape(persistent=True) as tape:
@@ -554,27 +568,43 @@ class WolperGrid(AgentWithConverter):
             td_v = tf.stop_gradient(batch[2] + d * t1_Q)
             td_err = td_v - t_Q
             loss_c = 0.5 * tf.square(td_err)
-            loss_critic = tf.math.reduce_mean(loss_c, axis=0)
+            loss_critic = tf.math.reduce_mean(loss_c)
 
             # DPG / gradient sample
             # github.com/deepmind/acme/blob/master/acme/tf/losses/dpg.py
 
             # Modified, we use t_O here instead of t1_O
             # So stop gradient on obs net for policy
-            t_O = tf.stop_gradient(t_O)
-            dpg_t_a = self.Qmain.actor([t_O])
-            dpg_t_a_np[:] = dpg_t_a.numpy()[0][:]
-            dpg_t_q = self.Qmain.critic([t_O, dpg_t_a])
-            dqda = tape.gradient([dpg_t_q], [dpg_t_a])[0]
-            # Gradient clip if enabled
-            if cfg.GRADIENT_CLIP:
-                dqda = tf.clip_by_norm(dqda, 1.0, axes=-1)
-            # Modifed DPG to converge at better proto actions
-            target_a = t_a + dqda * dpg_t_a - dqda * t_a
+            dpg_t_O = tf.stop_gradient(t_O)
+            dpg_t_a = self.Qmain.actor([dpg_t_O])
+            dpg_t_q = self.Qmain.critic([dpg_t_O, dpg_t_a])
+            with tape.stop_recording():
+                dqda = tape.gradient([dpg_t_q], [dpg_t_a])[0]
+                # Gradient clip if enabled
+                if cfg.GRADIENT_CLIP:
+                    dqda = tf.clip_by_norm(dqda, 1.0, axes=-1)
+
+            # Modified, use valid action for sum with dqda
+            # Reevaluate full policy to get valid actions 
+            with tape.stop_recording():
+                dd_da = []
+                k_in = t_O.numpy()
+                k_dpg_t_a = dpg_t_a.numpy()
+                for i in range(self.batch_size):
+                    k_obs = k_in[i]
+                    k_obs = k_obs.reshape((1, self.observation_size))
+                    k_proto = k_dpg_t_a[i]
+                    k_proto = k_proto.reshape((1, -1))
+                    k_acts, Q = self.predict_k(k_obs, k_proto)
+                    k_idx = np.argmax(Q)
+                    a_idx = k_acts[k_idx]
+                    dd_da.append(self.flann[a_idx])
+
+                target_a = dqda + np.array(dd_da)
             target_a = tf.stop_gradient(target_a)
             target_sq = tf.square(target_a - dpg_t_a)
             loss_act = 0.5 * tf.reduce_sum(target_sq, axis=-1)
-            loss_actor = tf.reduce_mean(loss_act, axis=0)
+            loss_actor = tf.reduce_mean(loss_act)
 
         # Get vars
         actor_vars = self.Qmain.actor.trainable_variables
@@ -598,7 +628,7 @@ class WolperGrid(AgentWithConverter):
         if self.steps % (cfg.UPDATE_FREQ * 100) == 0:
             pd_dbg = pd.DataFrame(np.array([
                 dqda[0].numpy(),
-                dpg_t_a_np,
+                dpg_t_a[0].numpy(),
                 actor_grads[-1].numpy()
             ]),
             index=[

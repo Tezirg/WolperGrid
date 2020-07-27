@@ -55,15 +55,16 @@ class WolperGrid_NN(object):
             pre_name = "{}-bn-fc".format(name)
             layer = tfkl.Dense(layer_sizes[0], name=pre_name)(layer_in)
             bn_name = "{}-bn".format(name)
-            layer = tfkl.BatchNormalization(trainable=self.is_training,
-                                            name=bn_name)(layer)
+            bn = tfkl.BatchNormalization(trainable=self.is_training,
+                                         name=bn_name)
+            layer = bn(layer, training=self.is_training)
             th_name = "{}-tanh".format(name)
             layer = tf.nn.tanh(layer, name=th_name)
             size_index = 1
         else:
             layer = layer_in
 
-        for i, size in enumerate(layer_sizes[size_index:-1]):
+        for i, size in enumerate(layer_sizes[size_index:]):
             layer_name = "{}-fc-{}".format(name, i + 1)
             layer = tfkl.Dense(size,
                                kernel_initializer=uniform_initializer,
@@ -104,10 +105,11 @@ class WolperGrid_NN(object):
             output_obs = self.construct_mlp(input_obs,
                                             sizes,
                                             name="obs",
+                                            batch_norm=True,
                                             activation=tf.nn.elu,
                                             activation_final=tf.nn.elu)
         else:
-            output_obs = tfka.linear(input_obs)
+            output_obs = tfka.linear()input_obs)
 
         obs_inputs = [input_obs]
         obs_outputs = [output_obs]
@@ -125,7 +127,7 @@ class WolperGrid_NN(object):
                               name='actor_obs')
 
         # Forward encode
-        layer_n = 4
+        layer_n = 6
         layer_idxs = np.arange(layer_n)
         layer_range = [0, layer_n - 1]
         size_range = [
@@ -162,21 +164,22 @@ class WolperGrid_NN(object):
         input_concat = tf.concat([input_obs, input_proto], axis=-1,
                                  name="actor-concat")
         # Forward pass
-        layer_n = 4
+        layer_n = 5
         layer_idxs = np.arange(layer_n)
         layer_range = [0, layer_n - 1]
         size_range = [
             self.obs_size + self.proto_size,
-            1
+            128
         ]
         sizes_np = np.interp(layer_idxs, layer_range, size_range)
         sizes = list(sizes_np)
-        Q = self.construct_mlp(input_concat,
+        h = self.construct_mlp(input_concat,
                                sizes,
                                name="critic-mlp",
                                batch_norm=True,
                                activation=tf.nn.elu,
                                activation_final=None)
+        Q = tfkl.Dense(1, name="critic-Q")(h)
         # Backwards pass
         critic_inputs = [ input_obs, input_proto ]
         critic_outputs = [ Q ]

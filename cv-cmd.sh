@@ -11,7 +11,7 @@
 export WG_NAME=wg-cv-X.0.0.x
 export WG_DATA=~/data_grid2op/l2rpn_neurips_2020_track2_large/x1.0
 
-rm -rf ./logs-train/$WG_NAME
+rm -rf ./logs-train/$WG_NAME ddpg_dbg.csv
 # First time
 ./train.py\
     --name $WG_NAME \

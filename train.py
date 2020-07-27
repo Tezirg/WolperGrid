@@ -76,11 +76,11 @@ def train(env,
     WGConfig.GRADIENT_CLIP = False
     WGConfig.BATCH_SIZE = 64
     WGConfig.VERBOSE = verbose
-    WGConfig.INITIAL_EPSILON = 0.2
+    WGConfig.INITIAL_EPSILON = 1.0
     WGConfig.FINAL_EPSILON = 0.01
     WGConfig.DECAY_EPSILON = 1000
     WGConfig.UNIFORM_EPSILON = True
-    WGConfig.K = 32
+    WGConfig.K = 64
     WGConfig.UPDATE_FREQ = 128
     WGConfig.UPDATE_TARGET_SOFT_TAU = 1e-3
     WGConfig.ILLEGAL_GAME_OVER = False
@@ -88,10 +88,10 @@ def train(env,
     WGConfig.SIMULATE_DO_NOTHING = False
     WGConfig.DISCOUNT_FACTOR = 0.99
     WGConfig.REPLAY_BUFFER_SIZE = 1024*128
-    WGConfig.REPLAY_BUFFER_MIN = 1024*2
-    WGConfig.ACTION_SET = False
+    WGConfig.REPLAY_BUFFER_MIN = 1024
+    WGConfig.ACTION_SET = True
     WGConfig.ACTION_CHANGE = False
-    WGConfig.ACTION_REDISP = True
+    WGConfig.ACTION_REDISP = False
 
     agent = WGAgent(env.observation_space,
                     env.action_space,
@@ -124,7 +124,7 @@ if __name__ == "__main__":
 
     
     env = make(args.data_dir,
-               difficulty="0",
+               difficulty="custom",
                backend=backend,
                action_class=TopologyAndDispatchAction,
                reward_class=CombinedScaledReward,
@@ -155,7 +155,7 @@ if __name__ == "__main__":
     l2.set_range(0.0, env.n_line)
     cr.addReward("l2rpn", l2, 2.5 / env.n_line)
     #cr.addReward("flat", IncreasingFlatReward(), 1.0 / 8063.0)
-    cr.set_range(-1.0, 1.0)
+    cr.set_range(-10.0, 10.0)
     # Initialize custom rewards
     cr.initialize(env)
 

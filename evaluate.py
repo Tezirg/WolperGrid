@@ -63,7 +63,7 @@ def evaluate(env,
     limit_gpu_usage()
 
     WGConfig.VERBOSE = verbose
-    WGConfig.K = 512
+    WGConfig.K = 32
     WGConfig.SIMULATE = -1
     WGConfig.SIMULATE_DO_NOTHING = False
     WGConfig.ACTION_SET = False
