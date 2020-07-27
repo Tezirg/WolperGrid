@@ -109,7 +109,7 @@ class WolperGrid_NN(object):
                                             activation=tf.nn.elu,
                                             activation_final=tf.nn.elu)
         else:
-            output_obs = tfka.linear()input_obs)
+            output_obs = tfka.linear(input_obs)
 
         obs_inputs = [input_obs]
         obs_outputs = [output_obs]
