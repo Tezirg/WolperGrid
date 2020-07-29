@@ -254,13 +254,15 @@ class WolperGrid(AgentWithConverter):
         max_t = env.chronics_handler.max_timestep() - 1
         while self.done is False and t < max_t:
             # See if we need to act
-            _, _, done_sim, _ = self.obs.simulate(act_noop)
             n_close_of = np.sum(self.obs.rho[th > 400] >= 0.95)
             n_close_of += np.sum(self.obs.rho[th < 400] >= 0.85)
-            of_cond = n_close_of > (self.obs.n_line // 2)
+            of_cond = (n_close_of > (self.obs.n_line / 4.0))
+            done_sim = True
+            if not of_cond: # Do not simulate if we already have to act
+                _, _, done_sim, _ = self.obs.simulate(act_noop)
 
             # Choose an action
-            if done_sim is False and of_cond is False:
+            if not done_sim and not of_cond:
                 pred = 0
             elif np.random.rand(1) <= self.epsilon:
                 self.plays += 1
@@ -386,7 +388,7 @@ class WolperGrid(AgentWithConverter):
                 if self.epsilon < cfg.FINAL_EPSILON:
                     self.epsilon = cfg.FINAL_EPSILON
 
-            # Save the network every 100 episodes
+            # Save the network weights sometimes
             if m > 0 and m % cfg.SAVE_FREQ == 0:
                 self.save(modelpath)
 
