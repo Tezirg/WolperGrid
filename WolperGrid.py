@@ -77,6 +77,7 @@ class WolperGrid(AgentWithConverter):
         self.exp_buffer = ReplayBuffer(cfg.REPLAY_BUFFER_SIZE)
         self.done = False
         self.steps = 0
+        self.plays = 0
         self.epoch_rewards = []
         self.epoch_alive = []
         self.epoch_illegal = []
@@ -107,21 +108,29 @@ class WolperGrid(AgentWithConverter):
         act_dict = action.impact_on_objects()
 
         # Filter based on action type
-        if not cfg.ACTION_SET: # Filter out set actions
+
+        ## Filter out set_bus actions if disabled
+        if not cfg.ACTION_SET_BUS: 
             if len(act_dict["topology"]["assigned_bus"]) > 0:
                 return False
+            if len(act_dict["topology"]["disconnect_bus"]) > 0:
+                return False
+        ## Filter out set_line actions if disabled
+        if not cfg.ACTION_SET_LINE:
             if act_dict["force_line"]["reconnections"]["count"] > 0:
                 return False
             if act_dict["force_line"]["disconnections"]["count"] > 0:
                 return False
-
-        if not cfg.ACTION_CHANGE: # Filter out change actions
+        ## Filter out change bus actions if disabled
+        if not cfg.ACTION_CHANGE_BUS:
             if len(act_dict["topology"]["bus_switch"]) > 0:
                 return False
+        ## Filter out change line actions if disabled
+        if not cfg.ACTION_CHANGE_LINE:
             if act_dict["switch_line"]["count"] > 0:
                 return False
-
-        if not cfg.ACTION_REDISP: # Filter out redispatch actions
+        ## Filter out redispatch actions if disabled
+        if not cfg.ACTION_REDISP:
             if act_dict["redispatch"]["changed"]:
                 return False
 
@@ -181,6 +190,8 @@ class WolperGrid(AgentWithConverter):
             "e_decay": cfg.DECAY_EPSILON,
             "discount": cfg.DISCOUNT_FACTOR,
             "buffer_size": cfg.REPLAY_BUFFER_SIZE,
+            "buffer_min": cfg.REPLAY_BUFFER_MIN,
+            "update_freq": cfg.UPDATE_FREQ,
             "update_hard": cfg.UPDATE_TARGET_HARD_FREQ,
             "update_soft": cfg.UPDATE_TARGET_SOFT_TAU,
             "save_freq": cfg.SAVE_FREQ,
@@ -235,13 +246,27 @@ class WolperGrid(AgentWithConverter):
             start_episode_msg = "Episode [{:05d}] - {} - Epsilon {}"
             print(start_episode_msg.format(m, scenario_name, self.epsilon))
 
+        # Get once for use in loop
+        act_noop = env.action_space({})
+        th = env.get_thermal_limit()
+
         # Loop for t in episode steps
         max_t = env.chronics_handler.max_timestep() - 1
         while self.done is False and t < max_t:
+            # See if we need to act
+            _, _, done_sim, _ = self.obs.simulate(act_noop)
+            n_close_of = np.sum(self.obs.rho[th > 400] >= 0.95)
+            n_close_of += np.sum(self.obs.rho[th < 400] >= 0.85)
+            of_cond = n_close_of > (self.obs.n_line // 2)
+
             # Choose an action
-            if np.random.rand(1) <= self.epsilon:
+            if done_sim is False and of_cond is False:
+                pred = 0
+            elif np.random.rand(1) <= self.epsilon:
+                self.plays += 1
                 pred = self.random_move(self.state)
             else:
+                self.plays += 1
                 pred = self.predict_move(self.state)
 
             # Convert it to a valid action
@@ -254,13 +279,14 @@ class WolperGrid(AgentWithConverter):
             if cfg.ILLEGAL_GAME_OVER and info["is_illegal"]:
                 self.done = True
 
-            # Save to exp buffer
-            self.exp_buffer.add(self.state, pred,
-                                reward, self.done, new_state)
+            if done_sim or of_cond:
+                # Save to exp buffer
+                self.exp_buffer.add(self.state, pred,
+                                    reward, self.done, new_state)
 
             # Minibatch train
             if self.exp_buffer.size() >= cfg.REPLAY_BUFFER_MIN and \
-               self.steps % cfg.UPDATE_FREQ == 0:
+               self.plays % cfg.UPDATE_FREQ == 0:
                 # Sample from experience buffer
                 batch = self.exp_buffer.sample(self.batch_size)
                 # Perform training
@@ -429,9 +455,23 @@ class WolperGrid(AgentWithConverter):
                   use_target=False):
         # Get k actions
         k_acts = self.flann.search_flann(proto, cfg.K)
-
         # Get Q values
         Q = np.full(cfg.K, -1e3)
+
+        # Select model main or target
+        critic_nn = self.Qmain.critic
+        if use_target:
+            critic_nn = self.Qtarget.critic
+
+        # Special handling for k = 1
+        if cfg.K == 1:
+            input_obs = np.repeat(obs_input, 1, axis=0)
+            input_act = np.array([self.flann[k_acts[0]]])
+            input_batch = [input_obs, input_act]
+            Q_batch = critic_nn(input_batch, training=False)
+            Q = Q_batch.numpy()[0]
+            return k_acts, Q
+            
         # By chunks
         k_batch = 32
         k_rest = cfg.K % k_batch
@@ -447,10 +487,7 @@ class WolperGrid(AgentWithConverter):
             act_batch_li = [self.flann[a] for a in act_idx_batch]
             act_batch = np.array(act_batch_li)
             input_batch = [k_batch_data, act_batch]
-            if use_target:
-                Q_batch = self.Qtarget.critic(input_batch, training=False)
-            else:
-                Q_batch = self.Qmain.critic(input_batch, training=False)
+            Q_batch = critic_nn(input_batch, training=False)
             Q_batch = Q_batch.numpy().reshape(a_e - a_s)
             Q[a_s:a_e] = Q_batch[:]
 
@@ -507,7 +544,7 @@ class WolperGrid(AgentWithConverter):
                 if r_test > r:
                     act_index = 0
 
-        if batch_dbg == 0 and self.steps % (cfg.UPDATE_FREQ * 100) == 0:
+        if batch_dbg == 0 and self.plays % (cfg.UPDATE_FREQ * 100) == 0:
             pd_dbg = pd.DataFrame(np.array([
                 proto.numpy()[0],
                 self.flann[act_index],
@@ -578,29 +615,17 @@ class WolperGrid(AgentWithConverter):
             dpg_t_O = tf.stop_gradient(t_O)
             dpg_t_a = self.Qmain.actor([dpg_t_O])
             dpg_t_q = self.Qmain.critic([dpg_t_O, dpg_t_a])
+
+            # Don't record gradient compute on tape
             with tape.stop_recording():
                 dqda = tape.gradient([dpg_t_q], [dpg_t_a])[0]
-                # Gradient clip if enabled
-                if cfg.GRADIENT_CLIP:
-                    dqda = tf.clip_by_norm(dqda, 1.0, axes=-1)
-
-            # Modified, use valid action for sum with dqda
-            # Reevaluate full policy to get valid actions 
-            with tape.stop_recording():
-                dd_da = []
-                k_in = t_O.numpy()
-                k_dpg_t_a = dpg_t_a.numpy()
-                for i in range(self.batch_size):
-                    k_obs = k_in[i]
-                    k_obs = k_obs.reshape((1, self.observation_size))
-                    k_proto = k_dpg_t_a[i]
-                    k_proto = k_proto.reshape((1, -1))
-                    k_acts, Q = self.predict_k(k_obs, k_proto)
-                    k_idx = np.argmax(Q)
-                    a_idx = k_acts[k_idx]
-                    dd_da.append(self.flann[a_idx])
-
-                target_a = dqda + np.array(dd_da)
+                
+            # Gradient clip if enabled
+            if cfg.GRADIENT_CLIP:
+                dqda = tf.clip_by_norm(dqda, 1.0, axes=-1)
+            # target
+            target_a = dqda + dpg_t_a
+            # Dont propagate gradient to critic/obs
             target_a = tf.stop_gradient(target_a)
             target_sq = tf.square(target_a - dpg_t_a)
             loss_act = 0.5 * tf.reduce_sum(target_sq, axis=-1)
@@ -625,7 +650,7 @@ class WolperGrid(AgentWithConverter):
             actor_grads = tf.clip_by_global_norm(actor_grads, grad_clip)[0]
             crit_grads = tf.clip_by_global_norm(crit_grads, grad_clip)[0]
 
-        if self.steps % (cfg.UPDATE_FREQ * 100) == 0:
+        if self.plays % (cfg.UPDATE_FREQ * 100) == 0:
             pd_dbg = pd.DataFrame(np.array([
                 dqda[0].numpy(),
                 dpg_t_a[0].numpy(),

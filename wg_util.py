@@ -193,8 +193,9 @@ def unitary_acts_to_impact_tree(action_space):
             tree[c][i].append(act_id + 1)
 
     # Add do nothing in each category
-    for i in range(3):
-        tree[i].append([0,0,0])
+    tree[0].append([0,0,0])
+    tree[1].append([0,0,0])
+    tree[2].append([0,0,0])
     return tree
 
 def print_impact_tree(tree):

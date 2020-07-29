@@ -135,7 +135,10 @@ class WolperGrid_NN(object):
             self.proto_size
         ]
         sizes_np = np.interp(layer_idxs, layer_range, size_range)
-        sizes = list(sizes_np)
+        sizes = list(sizes_np.astype(int))
+        sizes = [
+            2048, 1024, 1024, 1024, self.proto_size, self.proto_size
+        ]
         proto = self.construct_mlp(input_obs,
                                    sizes,
                                    name="actor-mlp",
@@ -172,7 +175,10 @@ class WolperGrid_NN(object):
             128
         ]
         sizes_np = np.interp(layer_idxs, layer_range, size_range)
-        sizes = list(sizes_np)
+        sizes = list(sizes_np.astype(int))
+        sizes = [
+            2048, 1024, 1024, 512, 128
+        ]
         h = self.construct_mlp(input_concat,
                                sizes,
                                name="critic-mlp",

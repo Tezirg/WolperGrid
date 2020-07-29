@@ -11,6 +11,7 @@ from wg_util import *
 class WolperGrid_Flann(object):
     def __init__(self, action_space):
         self.action_space = action_space
+        self.max_elems = np.amax(self.action_space.sub_info)
         self.n_line = action_space.n_line
         self.topo_size = action_space.dim_topo
         self.disp_size = action_space.n_gen
@@ -19,22 +20,22 @@ class WolperGrid_Flann(object):
         self.act_offset = [0]
         self._action_size = 0
 
-        if cfg.ACTION_SET:
+        if cfg.ACTION_SET_LINE:
             self._action_size += self.n_line
             self.act_offset.append(self.act_offset[-1])
             self.act_offset.append(self.act_offset[-1] + self.n_line)
 
-        if cfg.ACTION_CHANGE:
+        if cfg.ACTION_CHANGE_LINE:
             self._action_size += self.n_line
             self.act_offset.append(self.act_offset[-1])
             self.act_offset.append(self.act_offset[-1] + self.n_line)
 
-        if cfg.ACTION_SET:
+        if cfg.ACTION_SET_BUS:
             self._action_size += self.topo_size
             self.act_offset.append(self.act_offset[-1])
             self.act_offset.append(self.act_offset[-1] + self.topo_size)
 
-        if cfg.ACTION_CHANGE:
+        if cfg.ACTION_CHANGE_BUS:
             self._action_size += self.topo_size
             self.act_offset.append(self.act_offset[-1])
             self.act_offset.append(self.act_offset[-1] + self.topo_size)
@@ -46,12 +47,13 @@ class WolperGrid_Flann(object):
 
         # Expose proto size
         self.action_size = self._action_size
-
+        
         # Declare variables
         self._act_vects = []
         self._flann = pf.FLANN()
 
         self.construct_vects()
+
 
     def _act_to_flann(self, act):
         # Declare zero vect
@@ -60,7 +62,7 @@ class WolperGrid_Flann(object):
         off_s = 1
         off_e = 2
 
-        if cfg.ACTION_SET: # Copy set line status
+        if cfg.ACTION_SET_LINE: # Copy set line status
             act_s = self.act_offset[off_s]
             act_e = self.act_offset[off_e] 
             line_s_f = act._set_line_status.astype(int)
@@ -69,14 +71,14 @@ class WolperGrid_Flann(object):
             off_s += 2
             off_e += 2
 
-        if cfg.ACTION_CHANGE: # Copy change line status
+        if cfg.ACTION_CHANGE_LINE: # Copy change line status
             act_s = self.act_offset[off_s]
             act_e = self.act_offset[off_e] 
             act_v[act_s:act_e] = act._switch_line_status.astype(np.float32)
             off_s += 2
             off_e += 2
 
-        if cfg.ACTION_SET: # Copy set bus
+        if cfg.ACTION_SET_BUS: # Copy set bus
             act_s = self.act_offset[off_s]
             act_e = self.act_offset[off_e] 
             bus_s_f = act._set_topo_vect.astype(int)
@@ -85,7 +87,7 @@ class WolperGrid_Flann(object):
             off_s += 2
             off_e += 2
 
-        if cfg.ACTION_CHANGE: # Copy change bus
+        if cfg.ACTION_CHANGE_BUS: # Copy change bus
             act_s = self.act_offset[off_s]
             act_e = self.act_offset[off_e]
             act_v[act_s:act_e] = act._change_bus_vect.astype(np.float32)
@@ -98,7 +100,7 @@ class WolperGrid_Flann(object):
             disp = disp_act_to_nn(self.action_space, act._redispatch)
             act_v[act_s:act_e] = disp
 
-        return self._normx(act_v)
+        return act_v
 
     @staticmethod
     def _normx(X):

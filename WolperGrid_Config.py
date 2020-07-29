@@ -24,8 +24,10 @@ class WolperGrid_Config():
     ILLEGAL_GAME_OVER = False
     SIMULATE = -1
     SIMULATE_DO_NOTHING = False
-    ACTION_SET = True
-    ACTION_CHANGE = True
+    ACTION_SET_LINE = True
+    ACTION_CHANGE_LINE = True
+    ACTION_SET_BUS = True
+    ACTION_CHANGE_BUS = True
     ACTION_REDISP = True
 
     @staticmethod

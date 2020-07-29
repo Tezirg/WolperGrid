@@ -66,9 +66,11 @@ def evaluate(env,
     WGConfig.K = 32
     WGConfig.SIMULATE = -1
     WGConfig.SIMULATE_DO_NOTHING = False
-    WGConfig.ACTION_SET = False
-    WGConfig.ACTION_CHANGE = False
-    WGConfig.ACTION_REDISP = True
+    WGConfig.ACTION_SET_LINE = False
+    WGConfig.ACTION_CHANGE_LINE = False
+    WGConfig.ACTION_SET_BUS = True
+    WGConfig.ACTION_CHANGE_BUS = False
+    WGConfig.ACTION_REDISP = False
 
     runner_params = env.get_params_for_runner()
     runner_params["verbose"] = verbose
