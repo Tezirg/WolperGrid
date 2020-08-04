@@ -72,23 +72,24 @@ def train(env,
 
     # Set config
     WGConfig.LR_CRITIC = 1e-5
-    WGConfig.LR_ACTOR = 5e-5
+    WGConfig.LR_ACTOR = 1e-4
     WGConfig.GRADIENT_CLIP = False
     WGConfig.BATCH_SIZE = 64
     WGConfig.VERBOSE = verbose
     WGConfig.INITIAL_EPSILON = 1.0
-    WGConfig.FINAL_EPSILON = 0.01
+    WGConfig.FINAL_EPSILON = 0.02
     WGConfig.DECAY_EPSILON = 5000
     WGConfig.UNIFORM_EPSILON = True
     WGConfig.K = 1
-    WGConfig.UPDATE_FREQ = 4
+    WGConfig.UPDATE_FREQ = 16
+    WGConfig.LOG_FREQ = WGConfig.UPDATE_FREQ * 10
     WGConfig.UPDATE_TARGET_SOFT_TAU = 1e-3
     WGConfig.ILLEGAL_GAME_OVER = False
     WGConfig.SIMULATE = -1
     WGConfig.SIMULATE_DO_NOTHING = False
     WGConfig.DISCOUNT_FACTOR = 0.99
     WGConfig.REPLAY_BUFFER_SIZE = 1024*128
-    WGConfig.REPLAY_BUFFER_MIN = 256
+    WGConfig.REPLAY_BUFFER_MIN = 1024*2
     WGConfig.ACTION_SET_LINE = False
     WGConfig.ACTION_CHANGE_LINE = False
     WGConfig.ACTION_SET_BUS = True
@@ -139,7 +140,7 @@ if __name__ == "__main__":
 
     # Do not load entires scenario at once
     # (faster exploration)
-    env.set_chunk_size(256)
+    env.set_chunk_size(128)
 
     # Register custom reward for training
     cr = env.reward_helper.template_reward

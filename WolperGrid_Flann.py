@@ -66,8 +66,9 @@ class WolperGrid_Flann(object):
             act_s = self.act_offset[off_s]
             act_e = self.act_offset[off_e] 
             line_s_f = act._set_line_status.astype(int)
-            act_v[act_s:act_e][line_s_f == 1] = 1.0
-            act_v[act_s:act_e][line_s_f == 2] = -1.0
+            act_v[act_s:act_e][line_s_f == -1] = -1.0
+            act_v[act_s:act_e][line_s_f == 0] = 0.0
+            act_v[act_s:act_e][line_s_f == 1] = -1.0
             off_s += 2
             off_e += 2
 
@@ -82,8 +83,9 @@ class WolperGrid_Flann(object):
             act_s = self.act_offset[off_s]
             act_e = self.act_offset[off_e] 
             bus_s_f = act._set_topo_vect.astype(int)
-            act_v[act_s:act_e][bus_s_f == 1] = 1.0
-            act_v[act_s:act_e][bus_s_f == 2] = -1.0
+            act_v[act_s:act_e][bus_s_f == 0] = -1.0
+            act_v[act_s:act_e][bus_s_f == 1] = 0.0
+            act_v[act_s:act_e][bus_s_f == 2] = 1.0
             off_s += 2
             off_e += 2
 

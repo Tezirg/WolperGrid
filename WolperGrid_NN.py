@@ -43,28 +43,50 @@ class WolperGrid_NN(object):
         self.construct_wg_actor()
         self.construct_wg_critic()
 
+    def construct_resmlp(self,
+                         layer_in,
+                         hidden_size,
+                         num_blocks,
+                         name="resmlp"):
+        layer_name = "{}-resmlp-fc0".format(name)
+        layer_w = tfkl.Dense(hidden_size, name=layer_name)(layer_in)
+
+        for block in range(num_blocks):
+            layer_name = "{}-resmlp-fc{}-0".format(name, block)
+            layer1 = tfkl.Dense(hidden_size, name=layer_name)(layer_w)
+            layer1 = tf.nn.elu(layer1)
+            layer_name = "{}-resmlp-fc{}-1".format(name, block)
+            layer2 = tfkl.Dense(hidden_size, name=layer_name)(layer1)
+            ln_name = "{}-ln-{}".format(name, block)
+            ln = tfkl.LayerNormalization(trainable=self.is_training,
+                                         name=ln_name)
+            layer_ln = ln(layer2 + layer_w)
+            layer_w = layer_ln
+
+        return layer_w
+
     def construct_mlp(self,
                       layer_in,
                       layer_sizes,
                       name="mlp",
-                      batch_norm=True,
+                      layer_norm=True,
                       activation=tf.nn.elu,
                       activation_final=None):
-        size_index = 0
-        if batch_norm:
-            pre_name = "{}-bn-fc".format(name)
+        if layer_norm:
+            pre_name = "{}-ln-fc".format(name)
             layer = tfkl.Dense(layer_sizes[0], name=pre_name)(layer_in)
-            bn_name = "{}-bn".format(name)
-            bn = tfkl.BatchNormalization(trainable=self.is_training,
-                                         name=bn_name)
-            layer = bn(layer, training=self.is_training)
+            ln_name = "{}-ln".format(name)
+            ln = tfkl.LayerNormalization(trainable=self.is_training,
+                                         name=ln_name)
+            layer = ln(layer, training=self.is_training)
             th_name = "{}-tanh".format(name)
             layer = tf.nn.tanh(layer, name=th_name)
             size_index = 1
         else:
+            size_index = 0
             layer = layer_in
 
-        for i, size in enumerate(layer_sizes[size_index:]):
+        for i, size in enumerate(layer_sizes[size_index:-1]):
             layer_name = "{}-fc-{}".format(name, i + 1)
             layer = tfkl.Dense(size,
                                kernel_initializer=uniform_initializer,
@@ -105,7 +127,7 @@ class WolperGrid_NN(object):
             output_obs = self.construct_mlp(input_obs,
                                             sizes,
                                             name="obs",
-                                            batch_norm=True,
+                                            layer_norm=True,
                                             activation=tf.nn.elu,
                                             activation_final=tf.nn.elu)
         else:
@@ -127,24 +149,31 @@ class WolperGrid_NN(object):
                               name='actor_obs')
 
         # Forward encode
-        layer_n = 6
-        layer_idxs = np.arange(layer_n)
-        layer_range = [0, layer_n - 1]
-        size_range = [
-            self.obs_size,
-            self.proto_size
-        ]
-        sizes_np = np.interp(layer_idxs, layer_range, size_range)
-        sizes = list(sizes_np.astype(int))
-        sizes = [
-            2048, 1024, 1024, 1024, self.proto_size, self.proto_size
-        ]
-        proto = self.construct_mlp(input_obs,
-                                   sizes,
-                                   name="actor-mlp",
-                                   batch_norm=True,
-                                   activation=tf.nn.elu,
-                                   activation_final=tf.nn.tanh)
+        #layer_n = 12
+        #layer_idxs = np.arange(layer_n)
+        #layer_range = [0, layer_n - 1]
+        #size_range = [
+        #    self.obs_size - 16,
+        #    self.proto_size
+        #]
+        #sizes_np = np.interp(layer_idxs, layer_range, size_range)
+        #sizes = list(sizes_np.astype(int))
+        #proto = self.construct_mlp(input_obs,
+        #                           sizes,
+        #                           name="actor-mlp",
+        #                           layer_norm=True,
+        #                           activation=tf.nn.elu,
+        #                           activation_final=tf.nn.tanh)
+        proto_mlp = self.construct_resmlp(input_obs, 1024, 8, "actor")
+
+        proto_top0 = tfkl.Dense(1024)(proto_mlp)
+        proto_top1 = tf.nn.elu(proto_top0)
+        proto_top2 = tfkl.Dense(1024)(proto_top1)
+        proto_top3 = tf.nn.elu(proto_top2)
+
+        proto_top4 = tfkl.Dense(self.proto_size)(proto_top3)
+        proto = tf.nn.tanh(proto_top4)
+
         # Backwards pass
         actor_inputs = [ input_obs ]
         actor_outputs = [ proto ]
@@ -165,27 +194,33 @@ class WolperGrid_NN(object):
                                 name='critic_proto')
 
         input_concat = tf.concat([input_obs, input_proto], axis=-1,
-                                 name="actor-concat")
+                                 name="critic_concat")
         # Forward pass
-        layer_n = 5
-        layer_idxs = np.arange(layer_n)
-        layer_range = [0, layer_n - 1]
-        size_range = [
-            self.obs_size + self.proto_size,
-            128
-        ]
-        sizes_np = np.interp(layer_idxs, layer_range, size_range)
-        sizes = list(sizes_np.astype(int))
-        sizes = [
-            2048, 1024, 1024, 512, 128
-        ]
-        h = self.construct_mlp(input_concat,
-                               sizes,
-                               name="critic-mlp",
-                               batch_norm=True,
-                               activation=tf.nn.elu,
-                               activation_final=None)
-        Q = tfkl.Dense(1, name="critic-Q")(h)
+        #layer_n = 12
+        #layer_idxs = np.arange(layer_n)
+        #layer_range = [0, layer_n - 1]
+        #size_range = [
+        #    self.obs_size + self.proto_size - 16,
+        #    1
+        #]
+        #sizes_np = np.interp(layer_idxs, layer_range, size_range)
+        #sizes = list(sizes_np.astype(int))
+        #Q = self.construct_mlp(input_concat,
+        #                       sizes,
+        #                       name="critic-mlp",
+        #                       layer_norm=True,
+        #                       activation=tf.nn.elu,
+        #                       activation_final=None)
+        Q_mlp = self.construct_resmlp(input_concat, 1024, 8, "critic")
+
+        Q_top0 = tfkl.Dense(512)(Q_mlp)
+        Q_top1 = tf.nn.elu(Q_top0)
+        Q_top2 = tfkl.Dense(256)(Q_top1)
+        Q_top3 = tf.nn.elu(Q_top2)
+        Q_top4 = tfkl.Dense(256)(Q_top3)
+
+        Q = tfkl.Dense(1)(Q_top4)
+
         # Backwards pass
         critic_inputs = [ input_obs, input_proto ]
         critic_outputs = [ Q ]
@@ -215,9 +250,9 @@ class WolperGrid_NN(object):
 
         # Update each param
         for src, dest in zip(source_params, target_params):
+            # Polyak averaging
             var_update = src.value() * tau
             var_persist = dest.value() * tau_inv
-            # Polyak averaging
             dest.assign(var_update + var_persist)
 
     def save_network(self, path):

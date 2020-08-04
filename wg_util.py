@@ -209,8 +209,10 @@ def print_impact_tree(tree):
     for g_id, g_acts in enumerate(tree[2]):
         print("Gen {}: {} actions".format(g_id, len(g_acts)))
 
-def draw_from_tree(tree, category_prob):
+def draw_from_tree(tree, category_prob=None):
     c = np.random.choice(3, p=category_prob)
+    while len(tree[c]) == 0:
+        c = np.random.choice(n_categories)
     i = np.random.choice(len(tree[c]))
     while len(tree[c][i]) == 0:
         i = np.random.choice(len(tree[c]))

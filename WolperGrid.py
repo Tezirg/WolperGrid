@@ -78,6 +78,7 @@ class WolperGrid(AgentWithConverter):
         self.done = False
         self.steps = 0
         self.plays = 0
+        self.last_update = -1
         self.epoch_rewards = []
         self.epoch_alive = []
         self.epoch_illegal = []
@@ -253,18 +254,7 @@ class WolperGrid(AgentWithConverter):
         # Loop for t in episode steps
         max_t = env.chronics_handler.max_timestep() - 1
         while self.done is False and t < max_t:
-            # See if we need to act
-            n_close_of = np.sum(self.obs.rho[th > 400] >= 0.95)
-            n_close_of += np.sum(self.obs.rho[th < 400] >= 0.85)
-            of_cond = (n_close_of > (self.obs.n_line / 4.0))
-            done_sim = True
-            if not of_cond: # Do not simulate if we already have to act
-                _, _, done_sim, _ = self.obs.simulate(act_noop)
-
-            # Choose an action
-            if not done_sim and not of_cond:
-                pred = 0
-            elif np.random.rand(1) <= self.epsilon:
+            if np.random.rand(1) <= self.epsilon:
                 self.plays += 1
                 pred = self.random_move(self.state)
             else:
@@ -281,14 +271,15 @@ class WolperGrid(AgentWithConverter):
             if cfg.ILLEGAL_GAME_OVER and info["is_illegal"]:
                 self.done = True
 
-            if done_sim or of_cond:
-                # Save to exp buffer
-                self.exp_buffer.add(self.state, pred,
-                                    reward, self.done, new_state)
+            # Save to exp buffer
+            self.exp_buffer.add(self.state, pred,
+                                reward, self.done, new_state)
 
             # Minibatch train
             if self.exp_buffer.size() >= cfg.REPLAY_BUFFER_MIN and \
+               self.plays > self.last_update and \
                self.plays % cfg.UPDATE_FREQ == 0:
+                self.last_update = self.plays
                 # Sample from experience buffer
                 batch = self.exp_buffer.sample(self.batch_size)
                 # Perform training
@@ -311,13 +302,9 @@ class WolperGrid(AgentWithConverter):
                                                      self.Qtarget.actor)
                     WolperGrid_NN.update_target_hard(self.Qmain.critic,
                                                      self.Qtarget.critic)
-            # Log to tensorboard
-            if self.exp_buffer.size() >= cfg.REPLAY_BUFFER_MIN and \
-               self.steps > cfg.UPDATE_FREQ and \
-               self.steps > 100 and \
-               len(self.epoch_alive) and \
-               self.steps % cfg.LOG_FREQ == 0:
-                self._tf_log_summary(self.steps)
+                # Log to tensorboard
+                if self.plays % cfg.LOG_FREQ == 0:
+                    self._tf_log_summary(self.steps)
 
             # Increment step
             if info["is_illegal"] or \
@@ -569,7 +556,7 @@ class WolperGrid(AgentWithConverter):
             return np.random.randint(self.action_space.n)
 
     def _ddpg_train(self, batch, step):
-        grad_clip = 40.0
+        grad_clip = 1.0
         input_shape = (self.batch_size,
                        self.observation_size)
         # S(t)
@@ -602,26 +589,24 @@ class WolperGrid(AgentWithConverter):
             t1_Q = tf.squeeze(t1_Q, axis=-1)
 
             # Critic loss / squared td error
-            # github.com/deepmind/trfl/blob/master/trfl/value_ops.py#L34
             d = (1.0 - batch[3].astype(np.float32)) * cfg.DISCOUNT_FACTOR
             td_v = tf.stop_gradient(batch[2] + d * t1_Q)
             td_err = td_v - t_Q
-            loss_c = 0.5 * tf.square(td_err)
+            loss_c = tf.square(td_err)
             loss_critic = tf.math.reduce_mean(loss_c)
 
-            # DPG / gradient sample
-            # github.com/deepmind/acme/blob/master/acme/tf/losses/dpg.py
-
-            # Modified, we use t_O here instead of t1_O
-            # So stop gradient on obs net for policy
+            # Stop gradient on obs net for policy
             dpg_t_O = tf.stop_gradient(t_O)
             dpg_t_a = self.Qmain.actor([dpg_t_O])
             dpg_t_q = self.Qmain.critic([dpg_t_O, dpg_t_a])
 
+            # DPG / gradient sample
+            # github.com/deepmind/acme/../acme/tf/losses/dpg.py
+
             # Don't record gradient compute on tape
             with tape.stop_recording():
                 dqda = tape.gradient([dpg_t_q], [dpg_t_a])[0]
-                
+
             # Gradient clip if enabled
             if cfg.GRADIENT_CLIP:
                 dqda = tf.clip_by_norm(dqda, 1.0, axes=-1)
@@ -632,6 +617,9 @@ class WolperGrid(AgentWithConverter):
             target_sq = tf.square(target_a - dpg_t_a)
             loss_act = 0.5 * tf.reduce_sum(target_sq, axis=-1)
             loss_actor = tf.reduce_mean(loss_act)
+
+            # github.com/openai/baselines/../baselines/ddpg/ddpg_learner.py
+            #loss_actor = -tf.reduce_mean(dpg_t_q)
 
         # Get vars
         actor_vars = self.Qmain.actor.trainable_variables
@@ -649,17 +637,17 @@ class WolperGrid(AgentWithConverter):
 
         # Gradient clip if enabled
         if cfg.GRADIENT_CLIP:
-            actor_grads = tf.clip_by_global_norm(actor_grads, grad_clip)[0]
-            crit_grads = tf.clip_by_global_norm(crit_grads, grad_clip)[0]
+            actor_grads = [tf.clip_by_norm(grad, grad_clip) for grad in actor_grads]
+            crit_grads = [tf.clip_by_norm(grad, grad_clip) for grad in crit_grads] 
 
         if self.plays % (cfg.UPDATE_FREQ * 100) == 0:
             pd_dbg = pd.DataFrame(np.array([
-                dqda[0].numpy(),
+                #dqda[0].numpy(),
                 dpg_t_a[0].numpy(),
                 actor_grads[-1].numpy()
             ]),
             index=[
-                "dqda_{}".format(self.steps),
+                #"dqda_{}".format(self.steps),
                 "dpg_t_a_{}".format(self.steps),
                 "grads_{}".format(self.steps)
             ])
