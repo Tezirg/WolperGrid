@@ -9,51 +9,55 @@ from WolperGrid_Config import WolperGrid_Config as cfg
 from wg_util import *
 
 class WolperGrid_Flann(object):
-    def __init__(self, action_space):
+    def __init__(self, action_space, action_size=None):
         self.action_space = action_space
         self.max_elems = np.amax(self.action_space.sub_info)
         self.n_line = action_space.n_line
         self.topo_size = action_space.dim_topo
         self.disp_size = action_space.n_gen
 
-        # Compute sizes and offsets once
-        self.act_offset = [0]
-        self._action_size = 0
-
-        if cfg.ACTION_SET_LINE:
-            self._action_size += self.n_line
-            self.act_offset.append(self.act_offset[-1])
-            self.act_offset.append(self.act_offset[-1] + self.n_line)
-
-        if cfg.ACTION_CHANGE_LINE:
-            self._action_size += self.n_line
-            self.act_offset.append(self.act_offset[-1])
-            self.act_offset.append(self.act_offset[-1] + self.n_line)
-
-        if cfg.ACTION_SET_BUS:
-            self._action_size += self.topo_size
-            self.act_offset.append(self.act_offset[-1])
-            self.act_offset.append(self.act_offset[-1] + self.topo_size)
-
-        if cfg.ACTION_CHANGE_BUS:
-            self._action_size += self.topo_size
-            self.act_offset.append(self.act_offset[-1])
-            self.act_offset.append(self.act_offset[-1] + self.topo_size)
-
-        if cfg.ACTION_REDISP:
-            self._action_size += self.disp_size
-            self.act_offset.append(self.act_offset[-1])
-            self.act_offset.append(self.act_offset[-1] + self.disp_size)
-
-        # Expose proto size
-        self.action_size = self._action_size
-        
         # Declare variables
-        self._act_vects = []
+        self._act_flann = []
+        self._flann_pts = None
         self._flann = pf.FLANN()
 
-        self.construct_vects()
+        if action_size is None:
+            # Compute sizes and offsets once
+            self.act_offset = [0]
+            self._action_size = 0
 
+            if cfg.ACTION_SET_LINE:
+                self._action_size += self.n_line
+                self.act_offset.append(self.act_offset[-1])
+                self.act_offset.append(self.act_offset[-1] + self.n_line)
+
+            if cfg.ACTION_CHANGE_LINE:
+                self._action_size += self.n_line
+                self.act_offset.append(self.act_offset[-1])
+                self.act_offset.append(self.act_offset[-1] + self.n_line)
+
+            if cfg.ACTION_SET_BUS:
+                self._action_size += self.topo_size
+                self.act_offset.append(self.act_offset[-1])
+                self.act_offset.append(self.act_offset[-1] + self.topo_size)
+
+            if cfg.ACTION_CHANGE_BUS:
+                self._action_size += self.topo_size
+                self.act_offset.append(self.act_offset[-1])
+                self.act_offset.append(self.act_offset[-1] + self.topo_size)
+
+            if cfg.ACTION_REDISP:
+                self._action_size += self.disp_size
+                self.act_offset.append(self.act_offset[-1])
+                self.act_offset.append(self.act_offset[-1] + self.disp_size)
+
+            # Expose proto size
+            self.action_size = self._action_size
+        
+            self.construct_vects()
+        else:
+            self.action_size = action_size
+            self._action_size = action_size
 
     def _act_to_flann(self, act):
         # Declare zero vect
@@ -111,22 +115,23 @@ class WolperGrid_Flann(object):
             return X
         return X / norm
 
+    def register_action(self, act_flann):
+        self._act_flann.append(act_flann)
+    
     def construct_vects(self):
         print("Flann build action vectors..")
         print("{} x {}".format(self.action_space.n, self.action_size))
         
         for act in self.action_space.all_actions:
-            act_v = self._act_to_flann(act)
-            # Add to list
-            self._act_vects.append(act_v)
-
-        flann_pts = [np.array(a) for a in self._act_vects]
-        self._flann_pts = np.array(flann_pts)
-        print("{} ..Done".format(self._flann_pts.shape))
+            act_flann = self._act_to_flann(act)
+            self.register_action(act_flann)
+            
+        print("..Done")
         
     def construct_flann(self):
         print("Flann build tree..")
         pf.set_distance_type("euclidean")
+        self._flann_pts = np.array(self._act_flann)
         self._flann.build_index(self._flann_pts,
                                 algorithm="kmeans",
                                 iterations=11,
@@ -139,6 +144,7 @@ class WolperGrid_Flann(object):
     def load_flann(self, filename):
         bytes_filename = filename.encode()
         self._flann.load_index(bytes_filename, self._flann_pts)
+        self._act_flann = list(self._flann_pts)
 
     def save_flann(self, filename):
         bytes_filename = filename.encode()
@@ -151,4 +157,4 @@ class WolperGrid_Flann(object):
         return res        
 
     def __getitem__(self, index):
-        return self._act_vects[index]
+        return self._act_flann[index]
