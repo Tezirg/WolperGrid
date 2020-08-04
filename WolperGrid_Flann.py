@@ -141,14 +141,16 @@ class WolperGrid_Flann(object):
                                 checks=16)
         print("..Done")
 
-    def load_flann(self, filename):
-        bytes_filename = filename.encode()
-        self._flann.load_index(bytes_filename, self._flann_pts)
+    def load_flann(self, index_filename, points_filename):
+        self._flann_pts = np.load(points_filename)
+        bytes_index_filename = index_filename.encode()
+        self._flann.load_index(bytes_index_filename, self._flann_pts)
         self._act_flann = list(self._flann_pts)
 
-    def save_flann(self, filename):
-        bytes_filename = filename.encode()
-        self._flann.save_index(bytes_filename)
+    def save_flann(self, index_filename, points_filename):
+        np.save(points_filename, self._flann_pts)
+        bytes_index_filename = index_filename.encode()
+        self._flann.save_index(bytes_index_filename)
 
     def search_flann(self, act_vect, k):
         search_vect = np.array(act_vect)

@@ -19,9 +19,12 @@ def cli():
     parser.add_argument("--action_file_in", required=True,
                         default="actions.npy",
                         help="Path to grid2op saved actions")
-    parser.add_argument("--flann_file_out", required=True,
+    parser.add_argument("--flann_index_out", required=True,
                         default="flann.index",
                         help="Path to flann index output")
+    parser.add_argument("--flann_pts_out", required=True,
+                        default="flann.npy",
+                        help="Path to flann points output")
     parser.add_argument("--action_file_out", required=True,
                         default="actions.npy",
                         help="Path to grid2op actions output")
@@ -115,7 +118,7 @@ if __name__ == "__main__":
     wg_flann.construct_flann()
 
     # Save index
-    wg_flann.save_flann(args.flann_file_out)
+    wg_flann.save_flann(args.flann_index_out, args.flann_pts_out)
     
     
 
