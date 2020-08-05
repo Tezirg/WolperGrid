@@ -10,7 +10,6 @@ from grid2op.Action import TopologyAndDispatchAction
 from WolperGrid_Flann import WolperGrid_Flann
 from wg_util import *
 
-
 def cli():
     parser = argparse.ArgumentParser(description="Flann builder WolperGrid")
 

@@ -116,7 +116,7 @@ class WolperGrid_Flann(object):
         return X / norm
 
     def register_action(self, act_flann):
-        self._act_flann.append(act_flann)
+        self._act_flann.append(act_flann.astype(np.float32))
     
     def construct_vects(self):
         print("Flann build action vectors..")
@@ -142,7 +142,7 @@ class WolperGrid_Flann(object):
         print("..Done")
 
     def load_flann(self, index_filename, points_filename):
-        self._flann_pts = np.load(points_filename)
+        self._flann_pts = np.load(points_filename).astype(np.float32)
         self._act_flann = list(self._flann_pts)
         bytes_index_filename = index_filename.encode()
         self._flann.load_index(bytes_index_filename, self._flann_pts)
