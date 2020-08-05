@@ -616,6 +616,15 @@ class WolperGrid(AgentWithConverter):
             with tape.stop_recording():
                 dqda = tape.gradient([dpg_t_q], [dpg_t_a])[0]
 
+            # Invert gradient if enabled
+            if cfg.GRADIENT_INVERT:
+                pdiff_max = 0.5 * (-dpg_t_a + 1.0)
+                pdiff_min = 0.5 * (dpg_t_a + 1.0)
+                dqda_filter = tf.zeros(dpg_t_a.shape[1])
+                dqda = tf.where(tf.greater(dqda, dqda_filter),
+                                tf.multiply(dqda, pdiff_max),
+                                tf.multiply(dqda, pdiff_min))
+            
             # Gradient clip if enabled
             if cfg.GRADIENT_CLIP:
                 dqda = tf.clip_by_norm(dqda, 1.0, axes=-1)
