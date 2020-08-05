@@ -164,7 +164,7 @@ class WolperGrid_NN(object):
         #                           layer_norm=True,
         #                           activation=tf.nn.elu,
         #                           activation_final=tf.nn.tanh)
-        proto_mlp = self.construct_resmlp(input_obs, 1024, 8, "actor")
+        proto_mlp = self.construct_resmlp(input_obs, 1024, 4, "actor")
 
         proto_top0 = tfkl.Dense(1024)(proto_mlp)
         proto_top1 = tf.nn.elu(proto_top0)
@@ -196,7 +196,7 @@ class WolperGrid_NN(object):
         input_concat = tf.concat([input_obs, input_proto], axis=-1,
                                  name="critic_concat")
         # Forward pass
-        layer_n = 10
+        layer_n = 6
         layer_idxs = np.arange(layer_n)
         layer_range = [0, layer_n - 1]
         size_range = [

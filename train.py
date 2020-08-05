@@ -47,6 +47,9 @@ def cli():
     parser.add_argument("--flann_pts_file", required=False,
                         default=None, type=str,
                         help="Path to pre-build flann points")
+    parser.add_argument("--flann_action_size", required=False,
+                        default=None, type=int,
+                        help="Pre-build flann representation size")
     # Params
     parser.add_argument("--num_episode", required=False,
                         default=DEFAULT_EPISODES, type=int,
@@ -86,7 +89,7 @@ def train(env,
     WGConfig.FINAL_EPSILON = 0.02
     WGConfig.DECAY_EPSILON = 1000
     WGConfig.UNIFORM_EPSILON = True
-    WGConfig.K = 32
+    WGConfig.K = 1
     WGConfig.UPDATE_FREQ = 16
     WGConfig.LOG_FREQ = WGConfig.UPDATE_FREQ * 10
     WGConfig.UPDATE_TARGET_SOFT_TAU = 1e-3
@@ -107,7 +110,7 @@ def train(env,
                     action_file=action_path,
                     flann_index_file=flann_index_path,
                     flann_pts_file=flann_pts_path,
-                    flann_action_size=env.n_line,
+                    flann_action_size=flann_action_size,
                     name=name, 
                     is_training=True)
 
@@ -187,4 +190,5 @@ if __name__ == "__main__":
           learning_rate = args.learning_rate,
           action_path = args.action_file,
           flann_index_path = args.flann_index_file,
-          flann_pts_path = args.flann_pts_file)
+          flann_pts_path = args.flann_pts_file,
+          flann_action_size = args.flann_action_size)
