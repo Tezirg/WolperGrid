@@ -20,7 +20,9 @@ class WolperGrid(AgentWithConverter):
                  observation_space,
                  action_space,
                  action_file=None,
-                 flann_file=None,
+                 flann_index_file=None,
+                 flann_pts_file=None,
+                 flann_action_size=None,
                  name=__name__,
                  is_training=False):
         # Call parent constructor
@@ -56,11 +58,15 @@ class WolperGrid(AgentWithConverter):
         self.state = []
 
         # Create G(x)
-        self.flann = WolperGrid_Flann(self.action_space)
-        if flann_file is None:
+        if flann_index_file is None or \
+           flann_pts_file is None or \
+           flann_action_size is None:
+            self.flann = WolperGrid_Flann(self.action_space)
             self.flann.construct_flann()
         else:
-            self.flann.load_flann(flann_file)
+            self.flann = WolperGrid_Flann(self.action_space,
+                                          action_size=flann_action_size)
+            self.flann.load_flann(flann_index_file, flann_pts_file)
 
         # Load network graph
         self.Qmain = WolperGrid_NN(self.action_space,
@@ -357,8 +363,9 @@ class WolperGrid(AgentWithConverter):
 
         # Save actions and flann index
         self.action_space.save(modelpath, "actions.npy")
-        flann_path = os.path.join(modelpath, "flann.index")
-        self.flann.save_flann(flann_path)
+        flann_index_path = os.path.join(modelpath, "flann.index")
+        flann_pts_path = os.path.join(modelpath, "flann.npy")
+        self.flann.save_flann(flann_index_path, flann_pts_path)
         
         # Training loop, over M episodes
         for m in range(iterations):
@@ -592,7 +599,7 @@ class WolperGrid(AgentWithConverter):
             d = (1.0 - batch[3].astype(np.float32)) * cfg.DISCOUNT_FACTOR
             td_v = tf.stop_gradient(batch[2] + d * t1_Q)
             td_err = td_v - t_Q
-            loss_c = tf.square(td_err)
+            loss_c = 0.5 * tf.square(td_err)
             loss_critic = tf.math.reduce_mean(loss_c)
 
             # Stop gradient on obs net for policy

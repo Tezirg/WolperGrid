@@ -106,8 +106,8 @@ if __name__ == "__main__":
     z_flann = (np_act_flann - mean) / std
 
     # MinMax normalization
-    norm_flann = minmax_scale(np_act_flann,
-                              feature_range=(0.0,1.0),
+    norm_flann = minmax_scale(z_flann,
+                              feature_range=(-1.0,1.0),
                               axis=0)
 
     # Register to flann index
@@ -119,7 +119,3 @@ if __name__ == "__main__":
 
     # Save index
     wg_flann.save_flann(args.flann_index_out, args.flann_pts_out)
-    
-    
-
-        

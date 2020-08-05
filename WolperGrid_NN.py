@@ -196,30 +196,30 @@ class WolperGrid_NN(object):
         input_concat = tf.concat([input_obs, input_proto], axis=-1,
                                  name="critic_concat")
         # Forward pass
-        #layer_n = 12
-        #layer_idxs = np.arange(layer_n)
-        #layer_range = [0, layer_n - 1]
-        #size_range = [
-        #    self.obs_size + self.proto_size - 16,
-        #    1
-        #]
-        #sizes_np = np.interp(layer_idxs, layer_range, size_range)
-        #sizes = list(sizes_np.astype(int))
-        #Q = self.construct_mlp(input_concat,
-        #                       sizes,
-        #                       name="critic-mlp",
-        #                       layer_norm=True,
-        #                       activation=tf.nn.elu,
-        #                       activation_final=None)
-        Q_mlp = self.construct_resmlp(input_concat, 1024, 8, "critic")
+        layer_n = 10
+        layer_idxs = np.arange(layer_n)
+        layer_range = [0, layer_n - 1]
+        size_range = [
+            self.obs_size + self.proto_size,
+            1
+        ]
+        sizes_np = np.interp(layer_idxs, layer_range, size_range)
+        sizes = list(sizes_np.astype(int))
+        Q = self.construct_mlp(input_concat,
+                               sizes,
+                               name="critic-mlp",
+                               layer_norm=True,
+                               activation=tf.nn.elu,
+                               activation_final=None)
+        #Q_mlp = self.construct_resmlp(input_concat, 1024, 8, "critic")
 
-        Q_top0 = tfkl.Dense(512)(Q_mlp)
-        Q_top1 = tf.nn.elu(Q_top0)
-        Q_top2 = tfkl.Dense(256)(Q_top1)
-        Q_top3 = tf.nn.elu(Q_top2)
-        Q_top4 = tfkl.Dense(256)(Q_top3)
+        #Q_top0 = tfkl.Dense(512)(Q_mlp)
+        #Q_top1 = tf.nn.elu(Q_top0)
+        #Q_top2 = tfkl.Dense(256)(Q_top1)
+        #Q_top3 = tf.nn.elu(Q_top2)
+        #Q_top4 = tfkl.Dense(256)(Q_top3)
 
-        Q = tfkl.Dense(1)(Q_top4)
+        #Q = tfkl.Dense(1)(Q_top4)
 
         # Backwards pass
         critic_inputs = [ input_obs, input_proto ]

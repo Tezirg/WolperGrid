@@ -143,9 +143,9 @@ class WolperGrid_Flann(object):
 
     def load_flann(self, index_filename, points_filename):
         self._flann_pts = np.load(points_filename)
+        self._act_flann = list(self._flann_pts)
         bytes_index_filename = index_filename.encode()
         self._flann.load_index(bytes_index_filename, self._flann_pts)
-        self._act_flann = list(self._flann_pts)
 
     def save_flann(self, index_filename, points_filename):
         np.save(points_filename, self._flann_pts)

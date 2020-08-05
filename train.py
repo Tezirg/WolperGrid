@@ -41,9 +41,12 @@ def cli():
     parser.add_argument("--action_file", required=False,
                         default=None, type=str,
                         help="Path to pre-filtered action space")
-    parser.add_argument("--flann_file", required=False,
+    parser.add_argument("--flann_index_file", required=False,
                         default=None, type=str,
                         help="Path to pre-build flann index")
+    parser.add_argument("--flann_pts_file", required=False,
+                        default=None, type=str,
+                        help="Path to pre-build flann points")
     # Params
     parser.add_argument("--num_episode", required=False,
                         default=DEFAULT_EPISODES, type=int,
@@ -67,20 +70,22 @@ def train(env,
           batch_size=DEFAULT_BATCH_SIZE,
           learning_rate=DEFAULT_LR,
           action_path=None,
-          flann_path=None,
+          flann_index_path=None,
+          flann_pts_path=None,
+          flann_action_size=None,
           verbose=DEFAULT_VERBOSE):
 
     # Set config
-    WGConfig.LR_CRITIC = 1e-5
+    WGConfig.LR_CRITIC = 1e-4
     WGConfig.LR_ACTOR = 1e-4
     WGConfig.GRADIENT_CLIP = False
     WGConfig.BATCH_SIZE = 64
     WGConfig.VERBOSE = verbose
     WGConfig.INITIAL_EPSILON = 1.0
     WGConfig.FINAL_EPSILON = 0.02
-    WGConfig.DECAY_EPSILON = 5000
+    WGConfig.DECAY_EPSILON = 1000
     WGConfig.UNIFORM_EPSILON = True
-    WGConfig.K = 1
+    WGConfig.K = 32
     WGConfig.UPDATE_FREQ = 16
     WGConfig.LOG_FREQ = WGConfig.UPDATE_FREQ * 10
     WGConfig.UPDATE_TARGET_SOFT_TAU = 1e-3
@@ -89,7 +94,7 @@ def train(env,
     WGConfig.SIMULATE_DO_NOTHING = False
     WGConfig.DISCOUNT_FACTOR = 0.99
     WGConfig.REPLAY_BUFFER_SIZE = 1024*128
-    WGConfig.REPLAY_BUFFER_MIN = 1024*2
+    WGConfig.REPLAY_BUFFER_MIN = 1024*3
     WGConfig.ACTION_SET_LINE = False
     WGConfig.ACTION_CHANGE_LINE = False
     WGConfig.ACTION_SET_BUS = True
@@ -99,7 +104,9 @@ def train(env,
     agent = WGAgent(env.observation_space,
                     env.action_space,
                     action_file=action_path,
-                    flann_file=flann_path,
+                    flann_index_file=flann_index_path,
+                    flann_pts_file=flann_pts_path,
+                    flann_action_size=env.n_line,
                     name=name, 
                     is_training=True)
 
@@ -178,4 +185,5 @@ if __name__ == "__main__":
           batch_size = args.batch_size,
           learning_rate = args.learning_rate,
           action_path = args.action_file,
-          flann_path = args.flann_file)
+          flann_index_path = args.flann_index_file,
+          flann_pts_path = args.flann_pts_file)

@@ -32,7 +32,8 @@ rm -rf ./logs-train/$WG_NAME
     --name $WG_NAME \
     --data_dir $WG_DATA \
     --action_file ./models/$WG_NAME/actions.npy \
-    --flann_file ./models/$WG_NAME/flann.index \
+    --flann_index_file ./models/$WG_NAME/flann.index \
+    --flann_pts_file ./models/$WG_NAME/flann.npy \
     --num_episode 100000
 
 rm -rf ./logs-eval/$WG_NAME
