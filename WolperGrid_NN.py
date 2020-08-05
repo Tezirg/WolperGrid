@@ -15,6 +15,7 @@ uniform_initializer = tfki.VarianceScaling(
     distribution='uniform',
     mode='fan_out',
     scale=0.333)
+kernel_init = uniform_initializer
 
 class WolperGrid_NN(object):
     def __init__(self,
@@ -49,14 +50,20 @@ class WolperGrid_NN(object):
                          num_blocks,
                          name="resmlp"):
         layer_name = "{}-resmlp-fc0".format(name)
-        layer_w = tfkl.Dense(hidden_size, name=layer_name)(layer_in)
+        layer_w = tfkl.Dense(hidden_size,
+                             kernel_initializer=kernel_init,
+                             name=layer_name)(layer_in)
 
         for block in range(num_blocks):
             layer_name = "{}-resmlp-fc{}-0".format(name, block)
-            layer1 = tfkl.Dense(hidden_size, name=layer_name)(layer_w)
-            layer1 = tf.nn.elu(layer1)
+            layer1 = tfkl.Dense(hidden_size,
+                                kernel_initializer=kernel_init,
+                                name=layer_name)(layer_w)
+            layer1 = tf.nn.tanh(layer1)
             layer_name = "{}-resmlp-fc{}-1".format(name, block)
-            layer2 = tfkl.Dense(hidden_size, name=layer_name)(layer1)
+            layer2 = tfkl.Dense(hidden_size,
+                                kernel_initializer=kernel_init,
+                                name=layer_name)(layer1)
             ln_name = "{}-ln-{}".format(name, block)
             ln = tfkl.LayerNormalization(trainable=self.is_training,
                                          name=ln_name)
@@ -74,7 +81,9 @@ class WolperGrid_NN(object):
                       activation_final=None):
         if layer_norm:
             pre_name = "{}-ln-fc".format(name)
-            layer = tfkl.Dense(layer_sizes[0], name=pre_name)(layer_in)
+            layer = tfkl.Dense(layer_sizes[0],
+                               kernel_initializer=kernel_init,
+                               name=pre_name)(layer_in)
             ln_name = "{}-ln".format(name)
             ln = tfkl.LayerNormalization(trainable=self.is_training,
                                          name=ln_name)
@@ -89,7 +98,7 @@ class WolperGrid_NN(object):
         for i, size in enumerate(layer_sizes[size_index:-1]):
             layer_name = "{}-fc-{}".format(name, i + 1)
             layer = tfkl.Dense(size,
-                               kernel_initializer=uniform_initializer,
+                               kernel_initializer=kernel_init,
                                name=layer_name)(layer)
             # Add activation if provided
             if activation is not None:
@@ -99,7 +108,7 @@ class WolperGrid_NN(object):
         # Final layer
         layer_name = "{}-fc-{}".format(name, "final")
         layer_final = tfkl.Dense(layer_sizes[-1],
-                                 kernel_initializer=uniform_initializer,
+                                 kernel_initializer=kernel_init,
                                  name=layer_name)(layer)
         if activation_final is not None:
             activation_name = "{}-act-{}".format(name, "final")
@@ -166,12 +175,17 @@ class WolperGrid_NN(object):
         #                           activation_final=tf.nn.tanh)
         proto_mlp = self.construct_resmlp(input_obs, 1024, 4, "actor")
 
-        proto_top0 = tfkl.Dense(1024)(proto_mlp)
+        proto_top0 = tfkl.Dense(1024,
+                                kernel_initializer=kernel_init,
+                                name="proto-fc1")(proto_mlp)
         proto_top1 = tf.nn.elu(proto_top0)
-        proto_top2 = tfkl.Dense(1024)(proto_top1)
+        proto_top2 = tfkl.Dense(1024,
+                                kernel_initializer=kernel_init,
+                                name="proto-fc2")(proto_top1)
         proto_top3 = tf.nn.elu(proto_top2)
-
-        proto_top4 = tfkl.Dense(self.proto_size)(proto_top3)
+        proto_top4 = tfkl.Dense(self.proto_size,
+                                kernel_initializer=kernel_init,
+                                name="proto-fc3")(proto_top3)
         proto = tf.nn.tanh(proto_top4)
 
         # Backwards pass
