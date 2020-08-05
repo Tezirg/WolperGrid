@@ -503,7 +503,9 @@ class WolperGrid(AgentWithConverter):
             proto = self.Qmain.actor(obs, training=False)
 
         # Send k closest actions to critic
-        k_acts, Q = self.predict_k(obs.numpy(), proto.numpy(), use_target)
+        k_acts, Q = self.predict_k(obs.numpy(),
+                                   proto.numpy(),
+                                   use_target)
 
         # Get index of highest critic q value out of K
         k_index = np.argmax(Q)
