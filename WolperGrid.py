@@ -655,8 +655,10 @@ class WolperGrid(AgentWithConverter):
 
         # Gradient clip if enabled
         if cfg.GRADIENT_CLIP:
-            actor_grads = [tf.clip_by_norm(grad, grad_clip) for grad in actor_grads]
-            crit_grads = [tf.clip_by_norm(grad, grad_clip) for grad in crit_grads] 
+            actor_grads = [ tf.clip_by_norm(grad, grad_clip)
+                            for grad in actor_grads ]
+            crit_grads = [ tf.clip_by_norm(grad, grad_clip)
+                           for grad in crit_grads ]
 
         if self.plays % (cfg.UPDATE_FREQ * 100) == 0:
             pd_dbg = pd.DataFrame(np.array([
