@@ -3,6 +3,7 @@
 import argparse
 import numpy as np
 from sklearn.preprocessing import minmax_scale
+import pandas as pd
 
 import grid2op
 from grid2op.Action import TopologyAndDispatchAction
@@ -57,44 +58,66 @@ if __name__ == "__main__":
     # Shuffle training data
     env.chronics_handler.shuffle(shuffler=shuff)
 
-    # Get observation
-    obs = env.reset()
-
     # Create a flann tree instance
     wg_flann = WolperGrid_Flann(env.action_space, action_size=env.n_line)
     
     # Load actions
     actions_np = np.load(args.action_file_in)
 
-    # Declare flann list
+    # Declare store
+    act_rhos = {}
+    for act_id in range(actions_np.shape[0]):
+        act_rhos[act_id] = []
+
+    # Process actions on N scenarios
+    n_scenario = 10
+    for _ in range(n_scenario):
+        # Get observation, new scenario
+        obs = env.reset()
+
+        # Process first DN action
+        dn = env.action_space({})
+        dn_sim ,_, done, _ = obs.simulate(dn)
+
+        # Skip if dn gameover, no reference point
+        if done:
+            continue
+
+        # Register dn rhos
+        dn_rhos = dn_sim.rho
+        act_rhos[0].append(np.zeros(env.n_line))
+    
+        # Process rest of actions
+        for act_id, action_np in enumerate(actions_np[1:]):
+            # Build aciton from vect
+            action = env.action_space.from_vect(action_np)
+            # Simulate impact
+            obs_sim, _, done, _ = obs.simulate(action)
+            if done is False:
+                # Get rhos
+                action_rhos = np.array(obs_sim.rho)
+                # Substract dn
+                action_rhos -= dn_rhos
+                # Save flann repr
+                act_rhos[act_id].append(action_rhos)
+
+
+    # Declare FLANN stores
     act_flann = []
     act_ids = []
 
-    # Process first DN action
-    dn = env.action_space({})
-    dn_sim ,_, done, _ = obs.simulate(dn)
-    dn_rhos = dn_sim.rho
-    act_flann.append(dn_rhos)
-    act_ids.append(0)
-    
-    # Process rest of actions
-    for act_id, action_np in enumerate(actions_np[1:]):
-        # Build aciton from vect
-        action = env.action_space.from_vect(action_np)
-        # Simulate impact
-        obs_sim, _, done, _ = obs.simulate(action)
-        if done is False:
-            # Get rhos
-            action_rhos = np.array(obs_sim.rho)
-            # Substract dn
-            action_rhos -= dn_rhos
-            # Save flann repr
-            act_flann.append(action_rhos)
-            act_ids.append(act_id)
+    # Mean rhos
+    for act_id, rhos_li in act_rhos.items():
+        if len(rhos_li) == 0:
+            continue
+        act_rhos_mean = np.mean(np.array(rhos_li), axis=0)
+        act_ids.append(act_id)
+        act_flann.append(act_rhos_mean)
 
-    # Save actions that do not gameover
+    # Save actions that do not gameover all the time
     np.save(args.action_file_out, actions_np[act_ids])
-            
+    print("Saved {} actions", len(act_flann))
+
     # Make flann
     np_act_flann = np.array(act_flann)
 
@@ -105,15 +128,22 @@ if __name__ == "__main__":
     ## Standardize 
     z_flann = (np_act_flann - mean) / std
 
+    print("Z shape = ", z_flann.shape)
     # MinMax normalization
-    norm_flann = minmax_scale(z_flann,
+    norm_flann = minmax_scale(np_act_flann,
                               feature_range=(-1.0,1.0),
                               axis=0)
 
     # Register to flann index
-    for act_flann in norm_flann:
-        wg_flann.register_action(act_flann)
+    for register_flann in norm_flann:
+        wg_flann.register_action(register_flann)
 
+    # Dump to csv for debug
+    df = pd.DataFrame(norm_flann,
+                      index=act_ids,
+                      columns=env.name_line)
+    df.to_csv("./flann_dbg.csv")
+        
     # Build index
     wg_flann.construct_flann()
 
