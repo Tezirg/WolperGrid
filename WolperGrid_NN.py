@@ -173,7 +173,9 @@ class WolperGrid_NN(object):
         #                           layer_norm=True,
         #                           activation=tf.nn.elu,
         #                           activation_final=tf.nn.tanh)
-        proto_mlp = self.construct_resmlp(input_obs, 1024, 4, "actor")
+        proto_mlp = self.construct_resmlp(input_obs,
+                                          1024, 5,
+                                          name="actor-res-mlp")
 
         proto_top0 = tfkl.Dense(1024,
                                 kernel_initializer=kernel_init,

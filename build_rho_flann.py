@@ -3,6 +3,7 @@
 import argparse
 import numpy as np
 from sklearn.preprocessing import minmax_scale
+from sklearn.decomposition import PCA
 import pandas as pd
 
 import grid2op
@@ -50,15 +51,14 @@ if __name__ == "__main__":
 
     # Create env
     env = grid2op.make(args.data_dir,
-                       difficulty="competition",
+                       difficulty="0",
                        backend=backend,
                        action_class=TopologyAndDispatchAction)
+    env.seed(42)
+    np.random.seed(42)
 
     # Shuffle training data
     env.chronics_handler.shuffle(shuffler=shuff)
-
-    # Create a flann tree instance
-    wg_flann = WolperGrid_Flann(env.action_space, action_size=env.n_line)
     
     # Load actions
     actions_np = np.load(args.action_file_in)
@@ -92,13 +92,14 @@ if __name__ == "__main__":
             action = env.action_space.from_vect(action_np)
             # Simulate impact
             obs_sim, _, done, _ = obs.simulate(action)
-            if done is False:
-                # Get rhos
-                action_rhos = np.array(obs_sim.rho)
-                # Substract dn
-                action_rhos -= dn_rhos
-                # Save flann repr
-                act_rhos[act_id].append(action_rhos)
+            if done:
+                continue
+            # Get rhos
+            action_rhos = np.array(obs_sim.rho)
+            # Substract dn
+            action_rhos -= dn_rhos
+            # Save flann repr
+            act_rhos[act_id].append(action_rhos)
 
 
     # Declare FLANN stores
@@ -114,7 +115,8 @@ if __name__ == "__main__":
         act_flann.append(act_rhos_mean)
 
     # Save actions that do not gameover all the time
-    np.save(args.action_file_out, actions_np[act_ids])
+    actions_flann = actions_np[act_ids]
+    np.save(args.action_file_out, actions_flann)
     print("Saved {} actions", len(act_flann))
 
     # Make flann
@@ -126,23 +128,49 @@ if __name__ == "__main__":
     std = np.std(np_act_flann, axis=0)
     ## Standardize 
     z_flann = (np_act_flann - mean) / std
-
     print("Z shape = ", z_flann.shape)
-    # MinMax normalization
+    
+    # MinMax normalization [0;1]
     norm_flann = minmax_scale(np_act_flann,
                               feature_range=(-1.0,1.0),
                               axis=0)
+    print("MinMax shape = ", norm_flann.shape)
 
-    # Register to flann index
-    for register_flann in norm_flann:
-        wg_flann.register_action(register_flann)
+    # PCA reduction
+    pca_size = 16
+    pca = PCA(n_components=pca_size)
+    pca_flann = pca.fit_transform(np_act_flann)
+    print ("PCA shape = ", pca_flann.shape)
+    pca_norm_flann = minmax_scale(pca_flann,
+                                  feature_range=(-1.0,1.0),
+                                  axis=0)
 
     # Dump to csv for debug
-    df = pd.DataFrame(norm_flann,
-                      index=act_ids,
-                      columns=env.name_line)
-    df.to_csv("./flann_dbg.csv")
-        
+    with pd.ExcelWriter('flann_repr.xlsx') as writer:
+        df1 = pd.DataFrame(z_flann,
+                           index=act_ids,
+                           columns=env.name_line)
+        df1.to_excel(writer, sheet_name="Z-score std")
+        df2 = pd.DataFrame(norm_flann,
+                           index=act_ids,
+                           columns=env.name_line)
+        df2.to_excel(writer, sheet_name="MinMaxScale")
+        df3 = pd.DataFrame(pca_flann,
+                           index=act_ids,
+                           columns=np.arange(pca_size))
+        df3.to_excel(writer, sheet_name="PCA {}".format(pca_size))
+        df4 = pd.DataFrame(pca_norm_flann,
+                           index=act_ids,
+                           columns=np.arange(pca_size))
+        df4.to_excel(writer, sheet_name="PCA {} MinMaxScale".format(pca_size))
+
+    # Create a flann tree instance
+    wg_flann = WolperGrid_Flann(env.action_space, action_size=pca_size)
+
+    # Register to flann index
+    for register_flann in pca_norm_flann:
+        wg_flann.register_action(register_flann)
+
     # Build index
     wg_flann.construct_flann()
 

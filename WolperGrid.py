@@ -64,9 +64,11 @@ class WolperGrid(AgentWithConverter):
             self.flann = WolperGrid_Flann(self.action_space)
             self.flann.construct_flann()
         else:
+            print ("Loading flann from files ..")
             self.flann = WolperGrid_Flann(self.action_space,
                                           action_size=flann_action_size)
             self.flann.load_flann(flann_index_file, flann_pts_file)
+            print ("... Done loading flann")
 
         # Load network graph
         self.Qmain = WolperGrid_NN(self.action_space,
@@ -467,7 +469,7 @@ class WolperGrid(AgentWithConverter):
             Q_batch = critic_nn(input_batch, training=False)
             Q = Q_batch.numpy()[0]
             return k_acts, Q
-            
+
         # By chunks
         k_batch = 32
         k_rest = cfg.K % k_batch

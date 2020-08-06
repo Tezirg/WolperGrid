@@ -87,7 +87,7 @@ def train(env,
     WGConfig.VERBOSE = verbose
     WGConfig.INITIAL_EPSILON = 1.0
     WGConfig.FINAL_EPSILON = 0.02
-    WGConfig.DECAY_EPSILON = 500
+    WGConfig.DECAY_EPSILON = 1000
     WGConfig.UNIFORM_EPSILON = True
     WGConfig.K = 32
     WGConfig.UPDATE_FREQ = 16
