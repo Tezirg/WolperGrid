@@ -76,6 +76,9 @@ class WolperGrid(AgentWithConverter):
                                    self.flann.action_size,
                                    is_training = self.is_training)
 
+        # Create noise util
+        self.noise = OrnsteinUhlenbeckActionNoise(self.flann.action_size)
+
         # Setup training vars if needed
         if self.is_training:
             self._init_training()
@@ -112,6 +115,7 @@ class WolperGrid(AgentWithConverter):
         self.impact_tree = None
         if cfg.UNIFORM_EPSILON:
             self.impact_tree = unitary_acts_to_impact_tree(self.action_space)
+
 
     def _filter_action(self, action):
         act_dict = action.impact_on_objects()
@@ -222,6 +226,7 @@ class WolperGrid(AgentWithConverter):
 
     def reset(self, observation):
         self._reset_state(observation)
+        self.noise.reset()
 
     def my_act(self, state, reward, done=False):
         act_idx = self.predict_move(state)
@@ -267,7 +272,7 @@ class WolperGrid(AgentWithConverter):
                 pred = self.random_move(self.state)
             else:
                 self.plays += 1
-                pred = self.predict_move(self.state)
+                pred = self.predict_move(self.state, noise=True)
 
             # Convert it to a valid action
             act = self.convert_act(pred)
@@ -493,6 +498,7 @@ class WolperGrid(AgentWithConverter):
 
     def predict_move(self, data,
                      use_target=False,
+                     noise=False,
                      batch_dbg=-1):
         input_shape = (1, self.observation_size)
         data_input = data.reshape(input_shape)
@@ -504,9 +510,15 @@ class WolperGrid(AgentWithConverter):
             obs = self.Qmain.obs(obs_input, training=False)
             proto = self.Qmain.actor(obs, training=False)
 
+        proto = proto.numpy()
+        if noise:
+            action_noise = self.noise()
+            proto += action_noise
+            proto = np.clip(proto, -1.0, 1.0)
+            
         # Send k closest actions to critic
         k_acts, Q = self.predict_k(obs.numpy(),
-                                   proto.numpy(),
+                                   proto,
                                    use_target)
 
         # Get index of highest critic q value out of K
@@ -546,7 +558,7 @@ class WolperGrid(AgentWithConverter):
 
         if batch_dbg == 0 and self.plays % (cfg.UPDATE_FREQ * 100) == 0:
             pd_dbg = pd.DataFrame(np.array([
-                proto.numpy()[0],
+                proto[0],
                 self.flann[act_index],
             ]),
             index=[
@@ -617,6 +629,7 @@ class WolperGrid(AgentWithConverter):
             # Don't record gradient compute on tape
             with tape.stop_recording():
                 dqda = tape.gradient([dpg_t_q], [dpg_t_a])[0]
+                dqda /= float(self.batch_size)
 
             # Invert gradient if enabled
             if cfg.GRADIENT_INVERT:
@@ -632,7 +645,7 @@ class WolperGrid(AgentWithConverter):
                 dqda = tf.clip_by_norm(dqda, 1.0, axes=-1)
             # target
             target_a = dqda + dpg_t_a
-            # Dont propagate gradient to critic/obs
+            ## Dont propagate gradient to critic/obs
             target_a = tf.stop_gradient(target_a)
             target_sq = tf.square(target_a - dpg_t_a)
             loss_act = 0.5 * tf.reduce_sum(target_sq, axis=-1)

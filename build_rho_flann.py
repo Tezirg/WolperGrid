@@ -117,7 +117,7 @@ if __name__ == "__main__":
     # Save actions that do not gameover all the time
     actions_flann = actions_np[act_ids]
     np.save(args.action_file_out, actions_flann)
-    print("Saved {} actions", len(act_flann))
+    print("Saved {} actions".format(len(act_flann)))
 
     # Make flann
     np_act_flann = np.array(act_flann)

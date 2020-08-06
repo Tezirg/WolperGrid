@@ -218,3 +218,26 @@ def draw_from_tree(tree, category_prob=None):
         i = np.random.choice(len(tree[c]))
     a = np.random.choice(len(tree[c][i]))
     return tree[c][i][a]
+
+class OrnsteinUhlenbeckActionNoise():
+    def __init__(self, action_size, theta=0.15, dt=1e-2):
+        self.theta = theta
+        self.mu = np.full(action_size, 0.0)
+        self.sigma = np.full(action_size, 0.3)
+        self.dt = dt
+        self.reset()
+
+    def __call__(self):
+        prev_noise = self.x_prev
+        prev_noise += self.theta * (self.mu - self.x_prev) * self.dt
+        next_noise = self.sigma * np.sqrt(self.dt)
+        next_noise *= np.random.normal(size=self.mu.shape)
+        x = prev_noise + next_noise
+        self.x_prev = x
+        return x
+
+    def reset(self):
+        self.x_prev = np.zeros_like(self.mu)
+
+    
+        

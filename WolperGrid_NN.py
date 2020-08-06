@@ -158,37 +158,38 @@ class WolperGrid_NN(object):
                               name='actor_obs')
 
         # Forward encode
-        #layer_n = 12
-        #layer_idxs = np.arange(layer_n)
-        #layer_range = [0, layer_n - 1]
-        #size_range = [
-        #    self.obs_size - 16,
-        #    self.proto_size
-        #]
-        #sizes_np = np.interp(layer_idxs, layer_range, size_range)
-        #sizes = list(sizes_np.astype(int))
-        #proto = self.construct_mlp(input_obs,
-        #                           sizes,
-        #                           name="actor-mlp",
-        #                           layer_norm=True,
-        #                           activation=tf.nn.elu,
-        #                           activation_final=tf.nn.tanh)
-        proto_mlp = self.construct_resmlp(input_obs,
-                                          1024, 5,
-                                          name="actor-res-mlp")
+        layer_n = 8
+        layer_idxs = np.arange(layer_n)
+        layer_range = [0, layer_n - 2, layer_n - 1]
+        size_range = [
+            self.obs_size,
+            128,
+            self.proto_size
+        ]
+        sizes_np = np.interp(layer_idxs, layer_range, size_range)
+        sizes = list(sizes_np.astype(int))
+        proto = self.construct_mlp(input_obs,
+                                   sizes,
+                                   name="actor-mlp",
+                                   layer_norm=True,
+                                   activation=tf.nn.elu,
+                                   activation_final=tf.nn.tanh)
+        #proto_mlp = self.construct_resmlp(input_obs,
+        #                                  1024, 5,
+        #                                  name="actor-res-mlp")
 
-        proto_top0 = tfkl.Dense(1024,
-                                kernel_initializer=kernel_init,
-                                name="proto-fc1")(proto_mlp)
-        proto_top1 = tf.nn.elu(proto_top0)
-        proto_top2 = tfkl.Dense(1024,
-                                kernel_initializer=kernel_init,
-                                name="proto-fc2")(proto_top1)
-        proto_top3 = tf.nn.elu(proto_top2)
-        proto_top4 = tfkl.Dense(self.proto_size,
-                                kernel_initializer=kernel_init,
-                                name="proto-fc3")(proto_top3)
-        proto = tf.nn.tanh(proto_top4)
+        #proto_top0 = tfkl.Dense(1024,
+        #                        kernel_initializer=kernel_init,
+        #                        name="proto-fc1")(proto_mlp)
+        #proto_top1 = tf.nn.elu(proto_top0)
+        #proto_top2 = tfkl.Dense(1024,
+        #                        kernel_initializer=kernel_init,
+        #                        name="proto-fc2")(proto_top1)
+        #proto_top3 = tf.nn.elu(proto_top2)
+        #proto_top4 = tfkl.Dense(self.proto_size,
+        #                        kernel_initializer=kernel_init,
+        #                        name="proto-fc3")(proto_top3)
+        #proto = tf.nn.tanh(proto_top4)
 
         # Backwards pass
         actor_inputs = [ input_obs ]
@@ -214,9 +215,10 @@ class WolperGrid_NN(object):
         # Forward pass
         layer_n = 6
         layer_idxs = np.arange(layer_n)
-        layer_range = [0, layer_n - 1]
+        layer_range = [0, layer_n - 2, layer_n - 1]
         size_range = [
-            self.obs_size + self.proto_size,
+            1024,
+            128,
             1
         ]
         sizes_np = np.interp(layer_idxs, layer_range, size_range)
