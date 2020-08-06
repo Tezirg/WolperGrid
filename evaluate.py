@@ -28,8 +28,15 @@ def cli():
                         help="The path to the actor/critic models")
     parser.add_argument("--load_action", required=True,
                         help="The path to the actions file")
-    parser.add_argument("--load_flann", required=True,
-                        help="The path to the flann index file")
+    parser.add_argument("--flann_index_file", required=False,
+                        default=None, type=str,
+                        help="Path to pre-build flann index")
+    parser.add_argument("--flann_pts_file", required=False,
+                        default=None, type=str,
+                        help="Path to pre-build flann points")
+    parser.add_argument("--flann_action_size", required=False,
+                        default=None, type=int,
+                        help="Pre-build flann representation size")
     parser.add_argument("--logs_dir", required=False,
                         default=DEFAULT_LOGS_DIR, type=str,
                         help="Path to output logs directory") 
@@ -51,7 +58,9 @@ def cli():
 def evaluate(env,
              load_path=None,
              action_path=None,
-             flann_path=None,
+             flann_index_path=None,
+             flann_pts_path=None,
+             flann_action_size=None,
              logs_path=DEFAULT_LOGS_DIR,
              nb_episode=DEFAULT_NB_EPISODE,
              nb_process=DEFAULT_NB_PROCESS,
@@ -80,7 +89,9 @@ def evaluate(env,
     agent = WGAgent(env.observation_space,
                     env.action_space,
                     action_file=action_path,
-                    flann_file=flann_path,
+                    flann_index_file=flann_index_path,
+                    flann_pts_file=flann_pts_path,
+                    flann_action_size=flann_action_size,
                     is_training=False)
 
     # Load weights from file
@@ -150,7 +161,9 @@ if __name__ == "__main__":
     evaluate(env,
              load_path=args.load_dir,
              action_path=args.load_action,
-             flann_path=args.load_flann,
+             flann_index_path = args.flann_index_file,
+             flann_pts_path = args.flann_pts_file,
+             flann_action_size = args.flann_action_size,
              logs_path=args.logs_dir,
              nb_episode=args.nb_episode,
              nb_process=args.nb_process,

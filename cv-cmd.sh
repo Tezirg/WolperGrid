@@ -32,6 +32,7 @@ rm -rf ./logs-train/$WG_NAME ddpg_dbg.csv
     --action_file ./models/$WG_NAME/actions.npy \
     --flann_index_file ./models/$WG_NAME/flann.index \
     --flann_pts_file ./models/$WG_NAME/flann.npy \
+    --flann_action_size 16
     --num_episode 100000
 
 rm -rf ./logs-eval/$WG_NAME
@@ -40,6 +41,8 @@ rm -rf ./logs-eval/$WG_NAME
     --data_dir $WG_DATA \
     --load_dir ./models/$WG_NAME/ \
     --load_action ./models/$WG_NAME/actions.npy \
-    --load_flann ./models/$WG_NAME/flann.index \
+    --flann_index_file ./models/$WG_NAME/flann.index \
+    --flann_pts_file ./models/$WG_NAME/flann.npy \
+    --flann_action_size 16
     --logs_dir ./logs-eval/$WG_NAME \
-    --nb_episode 10
+    --nb_episode 12

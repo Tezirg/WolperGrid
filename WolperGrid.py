@@ -229,7 +229,7 @@ class WolperGrid(AgentWithConverter):
         self.noise.reset()
 
     def my_act(self, state, reward, done=False):
-        act_idx = self.predict_move(state)
+        act_idx = self.predict_move(state, noise=False)
 
         return act_idx
 
