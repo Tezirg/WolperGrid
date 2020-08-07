@@ -79,8 +79,8 @@ def train(env,
           verbose=DEFAULT_VERBOSE):
 
     # Set config
-    WGConfig.LR_CRITIC = 1e-4
-    WGConfig.LR_ACTOR = 1e-5
+    WGConfig.LR_CRITIC = 2e-5
+    WGConfig.LR_ACTOR = 2e-5
     WGConfig.GRADIENT_CLIP = False
     WGConfig.GRADIENT_INVERT = True
     WGConfig.BATCH_SIZE = 64

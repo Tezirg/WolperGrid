@@ -69,7 +69,7 @@ if __name__ == "__main__":
         act_rhos[act_id] = []
 
     # Process actions on N scenarios
-    n_scenario = 10
+    n_scenario = 25
     for _ in range(n_scenario):
         # Get observation, new scenario
         obs = env.reset()
@@ -130,7 +130,7 @@ if __name__ == "__main__":
     z_flann = (np_act_flann - mean) / std
     print("Z shape = ", z_flann.shape)
     
-    # MinMax normalization [0;1]
+    # MinMax normalization [-1;1]
     norm_flann = minmax_scale(np_act_flann,
                               feature_range=(-1.0,1.0),
                               axis=0)
@@ -141,9 +141,10 @@ if __name__ == "__main__":
     pca = PCA(n_components=pca_size)
     pca_flann = pca.fit_transform(np_act_flann)
     print ("PCA shape = ", pca_flann.shape)
-    pca_norm_flann = minmax_scale(pca_flann,
-                                  feature_range=(-1.0,1.0),
-                                  axis=0)
+
+    # L2 Norm samples
+    m = np.linalg.norm(pca_flann, axis=1, keepdims=True)
+    pca_norm_flann = np.where(m > 1e-5, pca_flann / m, pca_flann)
 
     # Dump to csv for debug
     with pd.ExcelWriter('flann_repr.xlsx') as writer:

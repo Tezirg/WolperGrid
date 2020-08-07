@@ -579,7 +579,7 @@ class WolperGrid(AgentWithConverter):
             return np.random.randint(self.action_space.n)
 
     def _ddpg_train(self, batch, step):
-        grad_clip = 1.0
+        grad_clip = 40.0
         input_shape = (self.batch_size,
                        self.observation_size)
         # S(t)

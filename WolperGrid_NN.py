@@ -11,11 +11,14 @@ import tensorflow.keras.initializers as tfki
 
 from WolperGrid_Config import WolperGrid_Config as cfg
 
-uniform_initializer = tfki.VarianceScaling(
+
+uniform_initializerA = tfki.VarianceScaling(
     distribution='uniform',
     mode='fan_out',
     scale=0.333)
-kernel_init = uniform_initializer
+uniform_initializerB = tfki.GlorotNormal()
+uniform_initializerC = tfki.HeNormal()
+kernel_init = uniform_initializerB
 
 class WolperGrid_NN(object):
     def __init__(self,
@@ -226,7 +229,7 @@ class WolperGrid_NN(object):
         Q = self.construct_mlp(input_concat,
                                sizes,
                                name="critic-mlp",
-                               layer_norm=True,
+                               layer_norm=False,
                                activation=tf.nn.elu,
                                activation_final=None)
         #Q_mlp = self.construct_resmlp(input_concat, 1024, 8, "critic")
