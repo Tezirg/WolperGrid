@@ -223,7 +223,7 @@ class OrnsteinUhlenbeckActionNoise():
     def __init__(self, action_size, theta=0.15, dt=1e-2):
         self.theta = theta
         self.mu = np.full(action_size, 0.0)
-        self.sigma = np.full(action_size, 0.3)
+        self.sigma = np.full(action_size, 0.1)
         self.dt = dt
         self.reset()
 
@@ -237,7 +237,8 @@ class OrnsteinUhlenbeckActionNoise():
         return x
 
     def reset(self):
-        self.x_prev = 2.0 * np.random.random(size=self.mu.shape) - 1.0
+        self.x_prev = np.zeros_like(self.mu)
+        self.mu = 2.0 * np.random.random(size=self.mu.shape) - 1.0
 
     
         
