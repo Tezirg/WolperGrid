@@ -18,7 +18,7 @@ uniform_initializerA = tfki.VarianceScaling(
     scale=0.333)
 uniform_initializerB = tfki.GlorotNormal()
 uniform_initializerC = tfki.HeNormal()
-kernel_init = uniform_initializerB
+kernel_init = uniform_initializerC
 
 class WolperGrid_NN(object):
     def __init__(self,
@@ -125,7 +125,7 @@ class WolperGrid_NN(object):
         input_obs = tfk.Input(dtype=tf.float32,
                               shape=input_shape,
                               name='input_obs')
-
+        ## MLP variant
         if self.obs_nn:
             layer_n = 8
             layer_idxs = np.arange(layer_n)
@@ -142,7 +142,7 @@ class WolperGrid_NN(object):
                                             layer_norm=True,
                                             activation=tf.nn.elu,
                                             activation_final=tf.nn.elu)
-        else:
+        else: ## Disabled variant
             output_obs = tfka.linear(input_obs)
 
         obs_inputs = [input_obs]
@@ -161,6 +161,8 @@ class WolperGrid_NN(object):
                               name='actor_obs')
 
         # Forward encode
+
+        ## MLP variant
         layer_n = 8
         layer_idxs = np.arange(layer_n)
         layer_range = [0, layer_n - 2, layer_n - 1]
@@ -177,6 +179,8 @@ class WolperGrid_NN(object):
                                    layer_norm=True,
                                    activation=tf.nn.elu,
                                    activation_final=tf.nn.tanh)
+
+        ## Residual MLP variant
         #proto_mlp = self.construct_resmlp(input_obs,
         #                                  1024, 5,
         #                                  name="actor-res-mlp")
@@ -193,6 +197,9 @@ class WolperGrid_NN(object):
         #                        kernel_initializer=kernel_init,
         #                        name="proto-fc3")(proto_top3)
         #proto = tf.nn.tanh(proto_top4)
+
+        # L2 Normalize actor output
+        #proto, _ = tf.linalg.normalize(proto, axis=-1, name="actor-norm")
 
         # Backwards pass
         actor_inputs = [ input_obs ]
@@ -216,6 +223,8 @@ class WolperGrid_NN(object):
         input_concat = tf.concat([input_obs, input_proto], axis=-1,
                                  name="critic_concat")
         # Forward pass
+
+        ## MLP variant
         layer_n = 6
         layer_idxs = np.arange(layer_n)
         layer_range = [0, layer_n - 2, layer_n - 1]
@@ -232,14 +241,14 @@ class WolperGrid_NN(object):
                                layer_norm=False,
                                activation=tf.nn.elu,
                                activation_final=None)
-        #Q_mlp = self.construct_resmlp(input_concat, 1024, 8, "critic")
 
+        ## Residual MLP variant
+        #Q_mlp = self.construct_resmlp(input_concat, 1024, 8, "critic")
         #Q_top0 = tfkl.Dense(512)(Q_mlp)
         #Q_top1 = tf.nn.elu(Q_top0)
         #Q_top2 = tfkl.Dense(256)(Q_top1)
         #Q_top3 = tf.nn.elu(Q_top2)
         #Q_top4 = tfkl.Dense(256)(Q_top3)
-
         #Q = tfkl.Dense(1)(Q_top4)
 
         # Backwards pass

@@ -237,7 +237,7 @@ class OrnsteinUhlenbeckActionNoise():
         return x
 
     def reset(self):
-        self.x_prev = np.zeros_like(self.mu)
+        self.x_prev = 2.0 * np.random.random(size=self.mu.shape) - 1.0
 
     
         

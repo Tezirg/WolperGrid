@@ -111,7 +111,7 @@ class WolperGrid_Flann(object):
     @staticmethod
     def _normx(X):
         norm = np.linalg.norm(X)
-        if norm == 0.0:
+        if norm < 1e-5:
             return X
         return X / norm
 
